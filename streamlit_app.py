@@ -4,7 +4,6 @@ import re
 
 st.set_page_config(
     page_title="Match Report Generator",
-    page_icon="🏏",
     layout="centered"
 )
 
