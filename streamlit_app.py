@@ -1,6 +1,14 @@
 import streamlit as st
 import requests
 import re
+import json
+from google import genai
+from google.genai import types
+
+
+# =========================================================
+# PAGE SETUP
+# =========================================================
 
 st.set_page_config(
     page_title="HB Hawks Match Report Generator",
@@ -66,6 +74,7 @@ def find_scorecard_innings(data):
 
     def walk(item):
         if isinstance(item, dict):
+
             if (
                 isinstance(item.get("batting"), list)
                 and "runsScored" in item
@@ -76,22 +85,21 @@ def find_scorecard_innings(data):
                 walk(value)
 
         elif isinstance(item, list):
+
             for value in item:
                 walk(value)
 
     walk(data)
+
     return found
 
 
 def flatten_balls(ball_container):
-    """
-    PlayCricket may group balls inside nested lists/dicts.
-    Recursively extract actual delivery objects.
-    """
 
     deliveries = []
 
     def walk(item):
+
         if isinstance(item, dict):
 
             if (
@@ -106,6 +114,7 @@ def flatten_balls(ball_container):
                 walk(value)
 
         elif isinstance(item, list):
+
             for value in item:
                 walk(value)
 
@@ -114,14 +123,12 @@ def flatten_balls(ball_container):
     return deliveries
 
 
-def get_ball_innings(ball_data):
-    return ball_data.get("innings", [])
-
-
 def get_team_lookup(ball_data):
+
     lookup = {}
 
     for team in ball_data.get("teams", []):
+
         lookup[team.get("id")] = team.get(
             "displayName",
             "Unknown Team"
@@ -136,16 +143,24 @@ def get_team_lookup(ball_data):
 
 def analyse_scorecard(scorecard):
 
-    summary = scorecard.get("matchSummary", {})
+    summary = scorecard.get(
+        "matchSummary",
+        {}
+    )
 
     result = summary.get(
         "resultText",
         "Result unavailable"
     )
 
-    teams = summary.get("teams", [])
+    teams = summary.get(
+        "teams",
+        []
+    )
 
-    innings_found = find_scorecard_innings(scorecard)
+    innings_found = find_scorecard_innings(
+        scorecard
+    )
 
     innings_analysis = []
 
@@ -153,16 +168,35 @@ def analyse_scorecard(scorecard):
 
         batting = []
 
-        for player in innings.get("batting", []):
+        for player in innings.get(
+            "batting",
+            []
+        ):
 
             batting.append({
                 "name": safe_name(
                     player.get("playerShortName")
                 ),
-                "runs": player.get("runsScored", 0),
-                "balls": player.get("ballsFaced", 0),
-                "fours": player.get("foursScored", 0),
-                "sixes": player.get("sixesScored", 0),
+                "runs": player.get(
+                    "runsScored",
+                    0
+                ),
+                "balls": player.get(
+                    "ballsFaced",
+                    0
+                ),
+                "fours": player.get(
+                    "foursScored",
+                    0
+                ),
+                "sixes": player.get(
+                    "sixesScored",
+                    0
+                ),
+                "strike_rate": player.get(
+                    "strikeRate",
+                    ""
+                ),
                 "dismissal": player.get(
                     "dismissalText",
                     ""
@@ -176,13 +210,19 @@ def analyse_scorecard(scorecard):
 
         bowling = []
 
-        for player in innings.get("bowling", []):
+        for player in innings.get(
+            "bowling",
+            []
+        ):
 
             bowling.append({
                 "name": safe_name(
                     player.get("playerShortName")
                 ),
-                "overs": player.get("oversBowled", 0),
+                "overs": player.get(
+                    "oversBowled",
+                    0
+                ),
                 "maidens": player.get(
                     "maidensBowled",
                     0
@@ -210,7 +250,10 @@ def analyse_scorecard(scorecard):
         )
 
         innings_analysis.append({
-            "runs": innings.get("runsScored", 0),
+            "runs": innings.get(
+                "runsScored",
+                0
+            ),
             "wickets": innings.get(
                 "numberOfWicketsFallen",
                 0
@@ -227,12 +270,17 @@ def analyse_scorecard(scorecard):
 
 
 # =========================================================
-# BALL-BY-BALL STORY ENGINE
+# BALL-BY-BALL ANALYSIS
 # =========================================================
 
-def analyse_ball_innings(innings, team_lookup):
+def analyse_ball_innings(
+    innings,
+    team_lookup
+):
 
-    batting_team_id = innings.get("battingTeamId")
+    batting_team_id = innings.get(
+        "battingTeamId"
+    )
 
     team_name = team_lookup.get(
         batting_team_id,
@@ -243,7 +291,10 @@ def analyse_ball_innings(innings, team_lookup):
     )
 
     balls = flatten_balls(
-        innings.get("balls", [])
+        innings.get(
+            "balls",
+            []
+        )
     )
 
     wickets = []
@@ -252,11 +303,15 @@ def analyse_ball_innings(innings, team_lookup):
 
     for ball in balls:
 
-        over = ball.get("overNumber", 0)
-        ball_number = ball.get("ballNumber", 0)
+        over = ball.get(
+            "overNumber",
+            0
+        )
 
-        # PlayCricket uses zero-based overNumber.
-        display_over = over + 1
+        ball_number = ball.get(
+            "ballNumber",
+            0
+        )
 
         progress_runs = ball.get(
             "progressRuns",
@@ -273,11 +328,30 @@ def analyse_ball_innings(innings, team_lookup):
             0
         )
 
-        wides = ball.get("wides", 0)
-        no_balls = ball.get("noBalls", 0)
-        byes = ball.get("byes", 0)
-        leg_byes = ball.get("legByes", 0)
-        penalties = ball.get("penaltyRuns", 0)
+        wides = ball.get(
+            "wides",
+            0
+        )
+
+        no_balls = ball.get(
+            "noBalls",
+            0
+        )
+
+        byes = ball.get(
+            "byes",
+            0
+        )
+
+        leg_byes = ball.get(
+            "legByes",
+            0
+        )
+
+        penalties = ball.get(
+            "penaltyRuns",
+            0
+        )
 
         total_delivery_runs = (
             runs_bat
@@ -289,40 +363,48 @@ def analyse_ball_innings(innings, team_lookup):
         )
 
         if over not in overs:
+
             overs[over] = {
                 "runs": 0,
                 "wickets": 0
             }
 
-        overs[over]["runs"] += total_delivery_runs
+        overs[over]["runs"] += (
+            total_delivery_runs
+        )
 
-        # -------------------------
         # WICKET
-        # -------------------------
 
-        if ball.get("dismissedParticipantId"):
+        if ball.get(
+            "dismissedParticipantId"
+        ):
 
-            dismissed = safe_name(
-                ball.get("strikerShortName")
+            dismissed_name = safe_name(
+                ball.get(
+                    "strikerShortName"
+                )
             )
 
-            dismissal = ball.get(
+            dismissal_type = ball.get(
                 "dismissalType",
                 "Wicket"
             )
 
             bowler = safe_name(
-                ball.get("bowlerShortName")
+                ball.get(
+                    "bowlerShortName"
+                )
             )
 
             wickets.append({
-                "over": display_over,
+                "over": over + 1,
                 "ball": ball_number,
                 "score": progress_runs,
                 "wickets": progress_wickets,
-                "batter": dismissed,
+                "batter": dismissed_name,
                 "bowler": bowler,
-                "dismissal": dismissal,
+                "dismissal_type":
+                    dismissal_type,
                 "description": ball.get(
                     "description",
                     ""
@@ -331,25 +413,23 @@ def analyse_ball_innings(innings, team_lookup):
 
             overs[over]["wickets"] += 1
 
-        # -------------------------
         # BOUNDARY
-        # -------------------------
 
         if runs_bat >= 4:
 
             boundaries.append({
-                "over": display_over,
+                "over": over + 1,
                 "ball": ball_number,
                 "runs": runs_bat,
                 "batter": safe_name(
-                    ball.get("strikerShortName")
+                    ball.get(
+                        "strikerShortName"
+                    )
                 ),
                 "score": progress_runs
             })
 
-    # -----------------------------------
-    # BIG OVERS
-    # -----------------------------------
+    # HIGH SCORING OVERS
 
     big_overs = []
 
@@ -368,45 +448,49 @@ def analyse_ball_innings(innings, team_lookup):
         reverse=True
     )
 
-    # -----------------------------------
     # WICKET CLUSTERS
-    # -----------------------------------
 
     wicket_clusters = []
 
-    for i in range(len(wickets) - 1):
+    for i in range(
+        len(wickets) - 1
+    ):
 
         first = wickets[i]
         second = wickets[i + 1]
 
         run_difference = (
-            second["score"] -
-            first["score"]
+            second["score"]
+            - first["score"]
         )
 
         if run_difference <= 10:
 
             wicket_clusters.append({
-                "first_score":
-                    f"{first['score']}/{first['wickets']}",
-                "second_score":
-                    f"{second['score']}/{second['wickets']}",
-                "runs_between": run_difference
+                "from":
+                    f"{first['score']}/"
+                    f"{first['wickets']}",
+                "to":
+                    f"{second['score']}/"
+                    f"{second['wickets']}",
+                "runs_between":
+                    run_difference
             })
 
     final_score = ""
 
     if balls:
+
         final_ball = balls[-1]
 
         final_score = (
-            f"{final_ball.get('progressRuns', 0)}/"
+            f"{final_ball.get('progressRuns', 0)}"
+            f"/"
             f"{final_ball.get('progressWickets', 0)}"
         )
 
     return {
         "team": team_name,
-        "balls": len(balls),
         "final_score": final_score,
         "wickets": wickets,
         "boundaries": boundaries,
@@ -417,11 +501,16 @@ def analyse_ball_innings(innings, team_lookup):
 
 def analyse_ball_by_ball(ball_data):
 
-    team_lookup = get_team_lookup(ball_data)
+    team_lookup = get_team_lookup(
+        ball_data
+    )
 
     results = []
 
-    for innings in get_ball_innings(ball_data):
+    for innings in ball_data.get(
+        "innings",
+        []
+    ):
 
         results.append(
             analyse_ball_innings(
@@ -434,95 +523,216 @@ def analyse_ball_by_ball(ball_data):
 
 
 # =========================================================
-# DISPLAY
+# GEMINI ARTICLE GENERATOR
 # =========================================================
 
-def display_match(score_analysis, story_analysis):
+def get_word_target(
+    article_length
+):
 
-    st.header("Match Analysis")
+    if "300" in article_length:
+        return 300
 
-    st.success(score_analysis["result"])
+    if "700" in article_length:
+        return 700
 
-    st.subheader("Scorecard")
+    return 500
 
-    for team in score_analysis["teams"]:
 
-        st.write(
-            f"**{team.get('displayName', 'Team')}:** "
-            f"{team.get('scoreText', '')}"
+def generate_article(
+    score_analysis,
+    story_analysis,
+    match_context,
+    avoid_context,
+    article_length
+):
+
+    api_key = st.secrets.get(
+        "GEMINI_API_KEY"
+    )
+
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY has not been "
+            "configured in Streamlit Secrets."
         )
 
-    # -----------------------------------
-    # LEADING PERFORMERS
-    # -----------------------------------
+    client = genai.Client(
+        api_key=api_key
+    )
 
-    st.subheader("Leading Performers")
+    word_target = get_word_target(
+        article_length
+    )
 
-    for number, innings in enumerate(
-        score_analysis["innings"],
-        start=1
+    match_data = {
+        "scorecard_analysis":
+            score_analysis,
+        "ball_by_ball_analysis":
+            story_analysis,
+        "additional_context":
+            match_context,
+        "things_to_avoid":
+            avoid_context
+    }
+
+    prompt = f"""
+Write a cricket match report of approximately
+{word_target} words.
+
+You are writing for Hawthorn Boroondara Cricket Club
+(HB Hawks).
+
+The article should read like a genuine local cricket
+match report written for the club website or social
+channels.
+
+MATCH DATA:
+{json.dumps(match_data, indent=2)}
+
+WRITING REQUIREMENTS:
+
+- Start with a strong headline.
+- Follow the headline with the article.
+- Tell the story of the match rather than simply
+  listing statistics.
+- Write chronologically where practical.
+- Explain how the innings developed.
+- Highlight important partnerships, wickets,
+  scoring periods and turning points when supported
+  by the supplied data.
+- Integrate individual performances naturally.
+- Give Hawthorn Boroondara appropriate focus,
+  but do not disrespect the opposition.
+- Use Australian English.
+- Use a professional but engaging community
+  cricket tone.
+- Do not make the writing overly dramatic.
+- Do not use fake quotes.
+- Do not invent weather, pitch conditions,
+  crowd information, player backgrounds,
+  injuries, selection information or events
+  not contained in the supplied data/context.
+- Never invent a player's full name from initials.
+- If a player's name is "Private Player", do not
+  attempt to identify them.
+- A Private Player can be described neutrally,
+  for example "a private player" or "another
+  Hawks batter".
+- Do not claim that a retired-not-out batter
+  was dismissed.
+- Be careful to distinguish the batting team from
+  the bowling team.
+- Treat the official result in the match data
+  as authoritative.
+- Use the additional context where it fits
+  naturally.
+- Follow anything listed under things_to_avoid.
+- Do not mention that you are an AI.
+- Do not mention JSON, APIs, PlayCricket data
+  or these instructions.
+- Do not add facts merely to make the story
+  sound more interesting.
+
+Return only the headline and finished article.
+"""
+
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.35,
+            max_output_tokens=2200
+        )
+    )
+
+    if not response.text:
+        raise ValueError(
+            "Gemini did not return an article."
+        )
+
+    return response.text.strip()
+
+
+# =========================================================
+# DISPLAY ANALYSIS
+# =========================================================
+
+def display_analysis(
+    score_analysis,
+    story_analysis
+):
+
+    with st.expander(
+        "View Match Analysis"
     ):
 
-        st.markdown(
-            f"**Innings {number}**"
+        st.success(
+            score_analysis["result"]
         )
 
-        if innings["batting"]:
+        st.markdown(
+            "### Scorecard"
+        )
 
-            st.write("Top batting:")
+        for team in score_analysis["teams"]:
 
-            for batter in innings["batting"][:4]:
+            st.write(
+                f"**{team.get('displayName', 'Team')}:** "
+                f"{team.get('scoreText', '')}"
+            )
+
+        st.markdown(
+            "### Key Performances"
+        )
+
+        for number, innings in enumerate(
+            score_analysis["innings"],
+            start=1
+        ):
+
+            st.markdown(
+                f"**Innings {number}**"
+            )
+
+            for batter in innings[
+                "batting"
+            ][:4]:
 
                 st.write(
                     f"• {batter['name']} — "
-                    f"{batter['runs']} "
-                    f"from {batter['balls']} balls"
+                    f"{batter['runs']} from "
+                    f"{batter['balls']} balls"
                 )
 
-        wicket_takers = [
-            b for b in innings["bowling"]
-            if b["wickets"] > 0
-        ]
-
-        if wicket_takers:
-
-            st.write("Leading bowling:")
+            wicket_takers = [
+                bowler
+                for bowler in innings["bowling"]
+                if bowler["wickets"] > 0
+            ]
 
             for bowler in wicket_takers[:4]:
 
                 st.write(
                     f"• {bowler['name']} — "
                     f"{bowler['wickets']}/"
-                    f"{bowler['runs']} "
-                    f"from {bowler['overs']} overs"
+                    f"{bowler['runs']} from "
+                    f"{bowler['overs']} overs"
                 )
 
-    # -----------------------------------
-    # MATCH STORY
-    # -----------------------------------
-
-    st.subheader("Ball-by-Ball Story")
-
-    for innings in story_analysis:
-
         st.markdown(
-            f"### {innings['team']}"
+            "### Match Story Data"
         )
 
-        if innings["final_score"]:
+        for innings in story_analysis:
 
-            st.write(
-                f"Ball-by-ball final score: "
-                f"**{innings['final_score']}**"
+            st.markdown(
+                f"**{innings['team']}**"
             )
 
-        # Wickets
-
-        if innings["wickets"]:
-
-            st.markdown("**Wickets**")
-
-            for wicket in innings["wickets"]:
+            for wicket in innings[
+                "wickets"
+            ]:
 
                 st.write(
                     f"• {wicket['score']}/"
@@ -530,75 +740,55 @@ def display_match(score_analysis, story_analysis):
                     f"{wicket['description']}"
                 )
 
-        # Big overs
-
-        if innings["big_overs"]:
-
-            st.markdown("**High-scoring overs**")
-
-            for over in innings["big_overs"][:5]:
-
-                st.write(
-                    f"• Over {over['over']}: "
-                    f"{over['runs']} runs"
-                )
-
-        # Wicket clusters
-
-        if innings["wicket_clusters"]:
-
-            st.markdown(
-                "**Potential wicket clusters**"
-            )
-
-            for cluster in innings[
-                "wicket_clusters"
-            ][:5]:
-
-                st.write(
-                    f"• {cluster['first_score']} "
-                    f"to {cluster['second_score']} "
-                    f"for only "
-                    f"{cluster['runs_between']} runs"
-                )
-
 
 # =========================================================
 # APP
 # =========================================================
 
-st.title("🏏 HB Hawks Match Report Generator")
+st.title(
+    "🏏 HB Hawks Match Report Generator"
+)
 
 st.write(
-    "Paste a PlayCricket match URL and the tool will "
-    "analyse the scorecard and ball-by-ball story."
+    "Paste a PlayCricket match link, add any "
+    "extra context and generate a ready-to-use "
+    "match report."
 )
+
 
 match_url = st.text_input(
     "PlayCricket Match URL",
-    placeholder="https://play.cricket.com.au/match/..."
+    placeholder=(
+        "https://play.cricket.com.au/match/..."
+    )
 )
 
-st.subheader("Match Context")
+
+st.subheader(
+    "Match Context"
+)
+
 
 match_context = st.text_area(
     "Anything you'd like included?",
     placeholder=(
         "Example:\n"
-        "First match of the season.\n"
+        "First game of the season.\n"
         "Club debut for Jane Smith.\n"
         "Only match played by the club this weekend."
     ),
-    height=140
+    height=130
 )
+
 
 avoid_context = st.text_area(
     "Anything you'd like avoided?",
     placeholder=(
         "Example: Don't mention last season's result."
     ),
-    height=90
+    height=80
 )
+
 
 article_length = st.selectbox(
     "Article length",
@@ -611,8 +801,12 @@ article_length = st.selectbox(
 )
 
 
+# =========================================================
+# GENERATE
+# =========================================================
+
 if st.button(
-    "Analyse Match",
+    "Generate Match Report",
     type="primary"
 ):
 
@@ -632,7 +826,7 @@ if st.button(
 
             st.error(
                 "Could not identify a valid "
-                "PlayCricket Match ID."
+                "PlayCricket match URL."
             )
 
         else:
@@ -640,81 +834,87 @@ if st.button(
             try:
 
                 with st.spinner(
-                    "Analysing match..."
+                    "Reading the scorecard and "
+                    "ball-by-ball..."
                 ):
 
-                    scorecard_data = get_scorecard(
-                        match_id
+                    scorecard_data = (
+                        get_scorecard(
+                            match_id
+                        )
                     )
 
-                    ball_data = get_ball_by_ball(
-                        match_id
+                    ball_data = (
+                        get_ball_by_ball(
+                            match_id
+                        )
                     )
 
-                    score_analysis = analyse_scorecard(
-                        scorecard_data
+                    score_analysis = (
+                        analyse_scorecard(
+                            scorecard_data
+                        )
                     )
 
-                    story_analysis = analyse_ball_by_ball(
-                        ball_data
+                    story_analysis = (
+                        analyse_ball_by_ball(
+                            ball_data
+                        )
                     )
+
+
+                with st.spinner(
+                    "Writing match report..."
+                ):
+
+                    article = (
+                        generate_article(
+                            score_analysis,
+                            story_analysis,
+                            match_context,
+                            avoid_context,
+                            article_length
+                        )
+                    )
+
 
                 st.success(
-                    "Match analysed successfully!"
-                )
-
-                display_match(
-                    score_analysis,
-                    story_analysis
+                    "Match report generated!"
                 )
 
                 st.divider()
 
-                st.subheader(
-                    "Article Instructions"
+                st.header(
+                    "Match Report"
                 )
 
-                if match_context:
-
-                    st.write(
-                        f"**Context:** {match_context}"
-                    )
-
-                if avoid_context:
-
-                    st.write(
-                        f"**Avoid:** {avoid_context}"
-                    )
-
-                st.write(
-                    f"**Length:** {article_length}"
+                st.markdown(
+                    article
                 )
 
-                with st.expander(
-                    "Developer Data"
-                ):
+                st.divider()
 
-                    st.json({
-                        "scorecard_analysis":
-                            score_analysis,
-                        "ball_by_ball_analysis":
-                            story_analysis
-                    })
+                display_analysis(
+                    score_analysis,
+                    story_analysis
+                )
+
 
             except requests.exceptions.RequestException as e:
 
                 st.error(
-                    "Could not retrieve "
-                    "PlayCricket data."
+                    "The PlayCricket match data "
+                    "could not be retrieved."
                 )
 
                 st.exception(e)
 
+
             except Exception as e:
 
                 st.error(
-                    "The match was retrieved, "
-                    "but analysis failed."
+                    "Something went wrong while "
+                    "generating the match report."
                 )
 
                 st.exception(e)
