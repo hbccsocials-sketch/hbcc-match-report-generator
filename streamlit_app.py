@@ -634,25 +634,79 @@ WRITING REQUIREMENTS:
 - Do not add facts merely to make the story
   sound more interesting.
 
-Return only the headline and finished article.
+IMPORTANT:
+The article must be complete.
+
+Write approximately {word_target} words.
+Do not stop mid-sentence or return a partial article.
+Ensure the article has a clear beginning, middle and conclusion.
+
+Return only the headline and COMPLETE finished article."""
+
+response = client.models.generate_content(
+    model="gemini-3.8-flash",
+    contents=prompt,
+    config=types.GenerateContentConfig(
+        temperature=0.35,
+        max_output_tokens=6000
+    )
+)
+
+if not response.text:
+    raise ValueError(
+        "Gemini did not return an article."
+    )
+
+article = response.text.strip()
+
+# -------------------------------------------------
+# CHECK THAT GEMINI ACTUALLY FINISHED THE ARTICLE
+# -------------------------------------------------
+
+word_count = len(article.split())
+
+minimum_words = {
+    300: 200,
+    500: 350,
+    700: 500
+}.get(word_target, 350)
+
+
+if word_count < minimum_words:
+
+    continuation_prompt = f"""
+The match report below was cut off before it was completed.
+
+Finish and rewrite the COMPLETE article from the beginning.
+
+Target approximately {word_target} words.
+
+Do not provide only the missing section.
+Return the entire finished article, including the headline.
+
+Do not invent any information.
+
+MATCH DATA:
+{json.dumps(match_data, indent=2)}
+
+INCOMPLETE ARTICLE:
+{article}
 """
 
-    response = client.models.generate_content(
+    second_response = client.models.generate_content(
         model="gemini-3.8-flash",
-        contents=prompt,
+        contents=continuation_prompt,
         config=types.GenerateContentConfig(
             temperature=0.35,
-            max_output_tokens=2200
+            max_output_tokens=6000
         )
     )
 
-    if not response.text:
-        raise ValueError(
-            "Gemini did not return an article."
-        )
+    if second_response.text:
+        article = second_response.text.strip()
 
-    return response.text.strip()
 
+return article
 
 # =========================================================
 # DISPLAY ANALYSIS
