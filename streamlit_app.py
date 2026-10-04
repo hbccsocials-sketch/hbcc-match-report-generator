@@ -3,7 +3,7 @@ import requests
 import re
 
 st.set_page_config(
-    page_title="HB Hawks Match Report Generator",
+    page_title="Match Report Generator",
     page_icon="🏏",
     layout="centered"
 )
