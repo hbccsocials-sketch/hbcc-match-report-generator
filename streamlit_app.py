@@ -13,9 +13,319 @@ from google.genai import types
 # =========================================================
 
 st.set_page_config(
-    page_title="HB Hawks Match Report Generator",
+    page_title="Match Report Generator",
     page_icon="🏏",
     layout="centered"
+)
+
+
+# =========================================================
+# CUSTOM HBCC STYLING
+# =========================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* APP */
+    .stApp {
+        background:
+            linear-gradient(
+                180deg,
+                #F4F6F8 0%,
+                #FFFFFF 42%
+            );
+    }
+
+    .block-container {
+        max-width: 900px;
+        padding-top: 2.5rem;
+        padding-bottom: 5rem;
+    }
+
+    #MainMenu {
+        visibility: hidden;
+    }
+
+    footer {
+        visibility: hidden;
+    }
+
+    /* TYPOGRAPHY */
+    h1, h2, h3, h4 {
+        color: #0F192D !important;
+        font-family: Arial, Helvetica, sans-serif;
+    }
+
+    p, label, div {
+        font-family: Arial, Helvetica, sans-serif;
+    }
+
+    /* HERO */
+    .hbcc-hero {
+        background:
+            linear-gradient(
+                135deg,
+                #0F192D 0%,
+                #172844 100%
+            );
+
+        border-radius: 24px;
+        padding: 48px 48px;
+        margin-bottom: 38px;
+        position: relative;
+        overflow: hidden;
+
+        box-shadow:
+            0 18px 45px rgba(15, 25, 45, 0.14);
+    }
+
+    .hbcc-hero::after {
+        content: "";
+        position: absolute;
+        width: 250px;
+        height: 250px;
+        border-radius: 50%;
+        background: #C8102E;
+        opacity: 0.13;
+        right: -80px;
+        top: -100px;
+    }
+
+    .hbcc-hero::before {
+        content: "";
+        position: absolute;
+        width: 130px;
+        height: 130px;
+        border-radius: 50%;
+        background: #F5B82E;
+        opacity: 0.08;
+        right: 80px;
+        bottom: -75px;
+    }
+
+    .hbcc-eyebrow {
+        color: #F5B82E;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+        position: relative;
+        z-index: 2;
+    }
+
+    .hbcc-accent {
+        width: 55px;
+        height: 5px;
+        background: #C8102E;
+        border-radius: 10px;
+        margin-bottom: 22px;
+        position: relative;
+        z-index: 2;
+    }
+
+    .hbcc-title {
+        color: #FFFFFF !important;
+        font-size: 48px;
+        line-height: 1.03;
+        font-weight: 800;
+        letter-spacing: -1.5px;
+        margin: 0 0 17px 0;
+        max-width: 650px;
+        position: relative;
+        z-index: 2;
+    }
+
+    .hbcc-description {
+        color: #D9DFE8;
+        font-size: 17px;
+        line-height: 1.6;
+        max-width: 620px;
+        margin: 0;
+        position: relative;
+        z-index: 2;
+    }
+
+    /* SECTION HEADERS */
+    .section-eyebrow {
+        color: #C8102E;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+
+    .section-title {
+        color: #0F192D;
+        font-size: 26px;
+        line-height: 1.2;
+        font-weight: 800;
+        margin-bottom: 7px;
+    }
+
+    .section-description {
+        color: #667085;
+        font-size: 14px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+    }
+
+    /* INPUT LABELS */
+    .stTextInput label,
+    .stTextArea label,
+    .stSelectbox label {
+        color: #0F192D !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+    }
+
+    /* TEXT INPUT */
+    .stTextInput input {
+        background-color: #FFFFFF !important;
+        color: #0F192D !important;
+        border: 1px solid #D9DEE7 !important;
+        border-radius: 11px !important;
+        padding: 12px 14px !important;
+    }
+
+    .stTextInput input:focus {
+        border-color: #C8102E !important;
+        box-shadow:
+            0 0 0 1px #C8102E !important;
+    }
+
+    /* TEXT AREAS */
+    .stTextArea textarea {
+        background-color: #FFFFFF !important;
+        color: #0F192D !important;
+        border: 1px solid #D9DEE7 !important;
+        border-radius: 11px !important;
+        padding: 13px 14px !important;
+    }
+
+    .stTextArea textarea:focus {
+        border-color: #C8102E !important;
+        box-shadow:
+            0 0 0 1px #C8102E !important;
+    }
+
+    /* SELECT */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        border-color: #D9DEE7 !important;
+        border-radius: 11px !important;
+        min-height: 48px;
+    }
+
+    /* BUTTON */
+    .stButton > button {
+        width: 100%;
+        min-height: 56px;
+
+        background:
+            linear-gradient(
+                135deg,
+                #C8102E,
+                #A90E27
+            ) !important;
+
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 12px !important;
+
+        font-size: 16px !important;
+        font-weight: 800 !important;
+
+        box-shadow:
+            0 8px 20px rgba(200, 16, 46, 0.20);
+
+        transition:
+            transform 0.15s ease,
+            box-shadow 0.15s ease;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-1px);
+
+        box-shadow:
+            0 12px 26px rgba(200, 16, 46, 0.27);
+    }
+
+    .stButton > button:focus {
+        color: #FFFFFF !important;
+    }
+
+    /* ALERTS */
+    div[data-testid="stAlert"] {
+        border-radius: 12px;
+    }
+
+    /* REPORT */
+    .report-eyebrow {
+        color: #C8102E;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+
+    /* EXPANDER */
+    details {
+        background: #FFFFFF;
+        border: 1px solid #E4E7EC !important;
+        border-radius: 12px !important;
+    }
+
+    /* DIVIDER */
+    hr {
+        border-color: #E7EAF0 !important;
+        margin-top: 32px !important;
+        margin-bottom: 32px !important;
+    }
+
+    /* FOOTER */
+    .hbcc-footer {
+        margin-top: 60px;
+        padding-top: 22px;
+        border-top: 1px solid #E4E7EC;
+        color: #98A2B3;
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-align: center;
+        font-weight: 700;
+    }
+
+    /* MOBILE */
+    @media (max-width: 700px) {
+
+        .block-container {
+            padding-top: 1.2rem;
+        }
+
+        .hbcc-hero {
+            padding: 32px 27px;
+            border-radius: 18px;
+        }
+
+        .hbcc-title {
+            font-size: 37px;
+        }
+
+        .hbcc-description {
+            font-size: 15px;
+        }
+
+        .section-title {
+            font-size: 23px;
+        }
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 
@@ -24,7 +334,6 @@ st.set_page_config(
 # =========================================================
 
 def extract_match_id(url):
-    """Extract the PlayCricket match ID from a match URL."""
 
     match = re.search(
         r"/match/([a-fA-F0-9-]+)",
@@ -35,7 +344,6 @@ def extract_match_id(url):
 
 
 def fetch_json(url):
-    """Fetch JSON data from PlayCricket."""
 
     response = requests.get(
         url,
@@ -51,7 +359,6 @@ def fetch_json(url):
 
 
 def get_scorecard(match_id):
-    """Retrieve scorecard data."""
 
     url = (
         "https://grassrootsapiproxy.cricket.com.au/"
@@ -64,7 +371,6 @@ def get_scorecard(match_id):
 
 
 def get_ball_by_ball(match_id):
-    """Retrieve ball-by-ball data."""
 
     url = (
         "https://grassrootsapiproxy.cricket.com.au/"
@@ -80,10 +386,6 @@ def get_ball_by_ball(match_id):
 # =========================================================
 
 def safe_name(name):
-    """
-    Protect players whose names are hidden
-    by PlayCricket.
-    """
 
     if not name:
         return "Private Player"
@@ -97,9 +399,6 @@ def safe_name(name):
 
 
 def find_scorecard_innings(data):
-    """
-    Recursively locate scorecard innings objects.
-    """
 
     found = []
 
@@ -127,10 +426,6 @@ def find_scorecard_innings(data):
 
 
 def flatten_balls(ball_container):
-    """
-    Recursively extract individual deliveries
-    from PlayCricket's nested ball structure.
-    """
 
     deliveries = []
 
@@ -160,13 +455,13 @@ def flatten_balls(ball_container):
 
 
 def get_team_lookup(ball_data):
-    """
-    Create team ID -> team name lookup.
-    """
 
     lookup = {}
 
-    for team in ball_data.get("teams", []):
+    for team in ball_data.get(
+        "teams",
+        []
+    ):
 
         lookup[team.get("id")] = team.get(
             "displayName",
@@ -416,10 +711,7 @@ def analyse_ball_innings(
             total_delivery_runs
         )
 
-        # -------------------------------------------------
         # WICKET
-        # -------------------------------------------------
-
         dismissed_id = ball.get(
             "dismissedParticipantId"
         )
@@ -484,10 +776,7 @@ def analyse_ball_innings(
 
             overs[over]["wickets"] += 1
 
-        # -------------------------------------------------
         # BOUNDARY
-        # -------------------------------------------------
-
         if runs_bat >= 4:
 
             boundaries.append({
@@ -502,10 +791,7 @@ def analyse_ball_innings(
                 "score": progress_runs
             })
 
-    # -------------------------------------------------
     # HIGH-SCORING OVERS
-    # -------------------------------------------------
-
     big_overs = []
 
     for over_number, data in overs.items():
@@ -523,10 +809,7 @@ def analyse_ball_innings(
         reverse=True
     )
 
-    # -------------------------------------------------
     # WICKET CLUSTERS
-    # -------------------------------------------------
-
     wicket_clusters = []
 
     for i in range(
@@ -559,10 +842,7 @@ def analyse_ball_innings(
                     run_difference
             })
 
-    # -------------------------------------------------
     # FINAL SCORE
-    # -------------------------------------------------
-
     final_score = ""
 
     if balls:
@@ -632,12 +912,6 @@ def call_gemini(
     prompt,
     max_output_tokens=6000
 ):
-    """
-    Call Gemini with automatic retries.
-
-    If the preferred model is temporarily
-    unavailable, try a lighter fallback model.
-    """
 
     models = [
         "gemini-3.8-flash",
@@ -664,7 +938,6 @@ def call_gemini(
                 )
 
                 if response.text:
-
                     return response
 
             except Exception as e:
@@ -684,11 +957,6 @@ def call_gemini(
 
                 if temporary_error:
 
-                    # Retry delays:
-                    # 2 seconds
-                    # 4 seconds
-                    # 6 seconds
-
                     wait_time = (
                         2 + (attempt * 2)
                     )
@@ -699,14 +967,9 @@ def call_gemini(
 
                     continue
 
-                # If it is not a temporary
-                # server/capacity error,
-                # show the real error.
-
                 raise
 
     if last_error:
-
         raise last_error
 
     raise ValueError(
@@ -725,10 +988,6 @@ def generate_article(
     avoid_context,
     article_length
 ):
-
-    # -------------------------------------------------
-    # API KEY
-    # -------------------------------------------------
 
     api_key = st.secrets.get(
         "GEMINI_API_KEY"
@@ -749,10 +1008,6 @@ def generate_article(
         article_length
     )
 
-    # -------------------------------------------------
-    # MATCH DATA FOR GEMINI
-    # -------------------------------------------------
-
     match_data = {
         "scorecard_analysis":
             score_analysis,
@@ -763,10 +1018,6 @@ def generate_article(
         "things_to_avoid":
             avoid_context
     }
-
-    # -------------------------------------------------
-    # MAIN PROMPT
-    # -------------------------------------------------
 
     prompt = f"""
 You are the match reporter for Hawthorn Boroondara
@@ -798,45 +1049,29 @@ engaging.
 Do not make the writing overly dramatic,
 exaggerated or cheesy.
 
-
 ARTICLE REQUIREMENTS:
 
 - Start with a strong, natural headline.
-
 - Follow the headline with the complete article.
-
 - The opening paragraph should summarise the
-  result and the significance of the match.
-
+  result and significance of the match.
 - Tell the story chronologically where practical.
-
 - Explain how the Hawthorn Boroondara innings
   developed.
-
 - Explain how the opposition innings developed.
-
-- Highlight momentum changes when they are
-  supported by the data.
-
+- Highlight momentum changes when supported
+  by the data.
 - Highlight significant batting performances.
-
 - Highlight significant bowling performances.
-
 - Highlight important wickets.
-
 - Highlight scoring periods and wicket clusters
   where relevant.
-
 - Integrate statistics naturally into the story.
-
-- Give Hawthorn Boroondara appropriate focus
-  while remaining respectful of the opposition.
-
+- Give Hawthorn Boroondara appropriate focus.
+- Remain respectful of the opposition.
 - Use additional context supplied by the user
-  naturally rather than simply repeating it.
-
+  naturally.
 - Follow anything listed under things_to_avoid.
-
 
 FACTUAL ACCURACY RULES:
 
@@ -855,15 +1090,11 @@ Do NOT invent:
 - tactical decisions
 - conversations
 - quotes
-- partnerships that cannot be established
-  from the supplied information
+- unsupported partnerships
 
 Never guess a player's full name from initials.
 
-For example, if the data says "T Chong",
-write "T Chong".
-
-Do not guess what the T stands for.
+If the data says "T Chong", write "T Chong".
 
 If a player's name is "Private Player",
 NEVER attempt to identify them.
@@ -878,8 +1109,7 @@ was dismissed.
 Be careful to distinguish the batting team
 from the bowling team.
 
-Treat the official match result as
-authoritative.
+Treat the official match result as authoritative.
 
 If scorecard information and ball-by-ball
 information appear inconsistent, prioritise
@@ -889,24 +1119,17 @@ the result.
 Do not invent information simply to make
 the article more interesting.
 
-
 ARTICLE STRUCTURE:
 
 The article should contain:
 
 1. Headline
-
 2. Opening paragraph summarising the match
-
 3. Hawthorn Boroondara batting story
-
 4. Opposition batting story
-
 5. Significant individual performances and
    turning points woven through the story
-
 6. Natural concluding paragraph
-
 
 IMPORTANT:
 
@@ -921,22 +1144,12 @@ Do not return only part of the article.
 Ensure the report has a clear beginning,
 middle and conclusion.
 
-Do not mention:
-
-- AI
-- Gemini
-- JSON
-- APIs
-- PlayCricket data
-- these instructions
+Do not mention AI, Gemini, JSON, APIs,
+PlayCricket data or these instructions.
 
 Return ONLY the headline and the COMPLETE
 finished article.
 """
-
-    # -------------------------------------------------
-    # FIRST GENERATION
-    # -------------------------------------------------
 
     response = call_gemini(
         client,
@@ -952,10 +1165,7 @@ finished article.
 
     article = response.text.strip()
 
-    # -------------------------------------------------
-    # CHECK ARTICLE LENGTH
-    # -------------------------------------------------
-
+    # Check whether the response appears incomplete
     word_count = len(
         article.split()
     )
@@ -969,10 +1179,6 @@ finished article.
         350
     )
 
-    # -------------------------------------------------
-    # RETRY IF ARTICLE WAS CUT SHORT
-    # -------------------------------------------------
-
     if word_count < minimum_words:
 
         retry_prompt = f"""
@@ -982,8 +1188,7 @@ or significantly shorter than requested.
 Rewrite the COMPLETE match report from the
 beginning.
 
-Target length:
-Approximately {word_target} words.
+Target approximately {word_target} words.
 
 MATCH DATA:
 
@@ -993,7 +1198,6 @@ PREVIOUS INCOMPLETE ARTICLE:
 
 {article}
 
-
 REQUIREMENTS:
 
 Return the ENTIRE article again.
@@ -1001,8 +1205,7 @@ Return the ENTIRE article again.
 Do not simply continue from where the previous
 response stopped.
 
-The article must contain:
-
+Include:
 - A headline
 - A complete opening paragraph
 - The Hawthorn Boroondara batting story
@@ -1037,8 +1240,7 @@ The final response MUST be complete.
 
 Do not stop mid-sentence.
 
-Return ONLY the headline and the complete
-article.
+Return ONLY the headline and complete article.
 """
 
         second_response = call_gemini(
@@ -1057,8 +1259,6 @@ article.
                 second_article.split()
             )
 
-            # Use whichever version is longer.
-
             if (
                 second_word_count
                 > word_count
@@ -1070,7 +1270,7 @@ article.
 
 
 # =========================================================
-# DISPLAY MATCH ANALYSIS
+# MATCH ANALYSIS DISPLAY
 # =========================================================
 
 def display_analysis(
@@ -1085,10 +1285,6 @@ def display_analysis(
         st.success(
             score_analysis["result"]
         )
-
-        # -------------------------------------------------
-        # SCORECARD
-        # -------------------------------------------------
 
         st.markdown(
             "### Scorecard"
@@ -1109,10 +1305,6 @@ def display_analysis(
             st.write(
                 f"**{team_name}:** {score}"
             )
-
-        # -------------------------------------------------
-        # KEY PERFORMANCES
-        # -------------------------------------------------
 
         st.markdown(
             "### Key Performances"
@@ -1164,10 +1356,6 @@ def display_analysis(
                         f"{bowler['runs']} from "
                         f"{bowler['overs']} overs"
                     )
-
-        # -------------------------------------------------
-        # BALL-BY-BALL STORY
-        # -------------------------------------------------
 
         st.markdown(
             "### Ball-by-Ball Story"
@@ -1239,23 +1427,56 @@ def display_analysis(
 
 
 # =========================================================
-# APP INTERFACE
+# HERO
 # =========================================================
 
-st.title(
-    "🏏 HB Hawks Match Report Generator"
+st.markdown(
+    """
+    <div class="hbcc-hero">
+
+        <div class="hbcc-eyebrow">
+            HAWTHORN BOROONDARA CRICKET CLUB
+        </div>
+
+        <div class="hbcc-accent"></div>
+
+        <div class="hbcc-title">
+            Match Report<br>Generator
+        </div>
+
+        <p class="hbcc-description">
+            Turn a PlayCricket scorecard into a
+            ready-to-publish match report in seconds.
+        </p>
+
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-st.write(
-    "Paste a PlayCricket match link, add any "
-    "extra context and generate a ready-to-use "
-    "HB Hawks match report."
+
+# =========================================================
+# STEP 01
+# =========================================================
+
+st.markdown(
+    """
+    <div class="section-eyebrow">
+        STEP 01
+    </div>
+
+    <div class="section-title">
+        Select your match
+    </div>
+
+    <div class="section-description">
+        Paste the PlayCricket link for the match
+        you want to report on.
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-
-# ---------------------------------------------------------
-# MATCH URL
-# ---------------------------------------------------------
 
 match_url = st.text_input(
     "PlayCricket Match URL",
@@ -1265,45 +1486,52 @@ match_url = st.text_input(
 )
 
 
-# ---------------------------------------------------------
-# MATCH CONTEXT
-# ---------------------------------------------------------
+# =========================================================
+# STEP 02
+# =========================================================
 
-st.subheader(
-    "Match Context"
+st.markdown(
+    """
+    <div style="height: 26px;"></div>
+
+    <div class="section-eyebrow">
+        STEP 02
+    </div>
+
+    <div class="section-title">
+        Build your report brief
+    </div>
+
+    <div class="section-description">
+        Add context the scorecard can't tell us
+        and choose how detailed the report should be.
+    </div>
+    """,
+    unsafe_allow_html=True
 )
+
 
 match_context = st.text_area(
-    "Anything you'd like included?",
+    "Context to include",
     placeholder=(
-        "Example:\n"
-        "First game of the season.\n"
-        "Club debut for Jane Smith.\n"
-        "Only match played by the club this weekend."
+        "e.g. First game of the season. "
+        "All other club matches were cancelled."
     ),
-    height=130
+    height=120
 )
 
-
-# ---------------------------------------------------------
-# THINGS TO AVOID
-# ---------------------------------------------------------
 
 avoid_context = st.text_area(
-    "Anything you'd like avoided?",
+    "Anything to avoid",
     placeholder=(
-        "Example: Don't mention last season's result."
+        "e.g. Don't mention last season's result."
     ),
-    height=80
+    height=90
 )
 
 
-# ---------------------------------------------------------
-# ARTICLE LENGTH
-# ---------------------------------------------------------
-
 article_length = st.selectbox(
-    "Article length",
+    "Report length",
     [
         "Short — 300 words",
         "Standard — 500 words",
@@ -1314,8 +1542,16 @@ article_length = st.selectbox(
 
 
 # =========================================================
-# GENERATE BUTTON
+# GENERATE
 # =========================================================
+
+st.markdown(
+    """
+    <div style="height: 12px;"></div>
+    """,
+    unsafe_allow_html=True
+)
+
 
 if st.button(
     "Generate Match Report",
@@ -1337,7 +1573,7 @@ if st.button(
         if not match_id:
 
             st.error(
-                "Could not identify a valid "
+                "That doesn't appear to be a valid "
                 "PlayCricket match URL."
             )
 
@@ -1345,13 +1581,12 @@ if st.button(
 
             try:
 
-                # -------------------------------------------------
-                # PLAYCRICKET
-                # -------------------------------------------------
+                # -----------------------------------------
+                # GET PLAYCRICKET DATA
+                # -----------------------------------------
 
                 with st.spinner(
-                    "Reading the scorecard and "
-                    "ball-by-ball..."
+                    "Analysing the match..."
                 ):
 
                     scorecard_data = (
@@ -1378,12 +1613,12 @@ if st.button(
                         )
                     )
 
-                # -------------------------------------------------
-                # GEMINI
-                # -------------------------------------------------
+                # -----------------------------------------
+                # GENERATE ARTICLE
+                # -----------------------------------------
 
                 with st.spinner(
-                    "Writing match report..."
+                    "Writing your match report..."
                 ):
 
                     article = (
@@ -1396,48 +1631,72 @@ if st.button(
                         )
                     )
 
-                # -------------------------------------------------
-                # RESULT
-                # -------------------------------------------------
+                # -----------------------------------------
+                # SUCCESS
+                # -----------------------------------------
 
                 st.success(
-                    "Match report generated!"
+                    "Your match report is ready."
                 )
 
-                st.divider()
+                st.markdown(
+                    """
+                    <div style="height: 18px;"></div>
 
-                st.header(
-                    "Match Report"
+                    <div class="report-eyebrow">
+                        GENERATED REPORT
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
+
+                # -----------------------------------------
+                # ARTICLE
+                # -----------------------------------------
 
                 st.markdown(
                     article
                 )
 
-                # -------------------------------------------------
-                # COPY VERSION
-                # -------------------------------------------------
+                # -----------------------------------------
+                # COPY ARTICLE
+                # -----------------------------------------
 
                 st.divider()
 
-                st.subheader(
-                    "Copy Article"
+                st.markdown(
+                    """
+                    <div class="section-eyebrow">
+                        COPY & PUBLISH
+                    </div>
+
+                    <div class="section-title">
+                        Article Text
+                    </div>
+
+                    <div class="section-description">
+                        Copy the finished report for your
+                        website, social channels or club
+                        communications.
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
                 st.text_area(
-                    "Article text",
+                    "Copy-ready version",
                     value=article,
-                    height=500
+                    height=500,
+                    label_visibility="collapsed"
                 )
 
                 st.caption(
-                    f"Generated article: "
                     f"{len(article.split())} words"
                 )
 
-                # -------------------------------------------------
-                # MATCH ANALYSIS
-                # -------------------------------------------------
+                # -----------------------------------------
+                # ANALYSIS
+                # -----------------------------------------
 
                 st.divider()
 
@@ -1469,11 +1728,11 @@ if st.button(
                 ):
 
                     st.error(
-                        "Gemini is currently experiencing "
-                        "high demand. The app automatically "
-                        "retried the request, but the service "
-                        "is still unavailable. Please try "
-                        "again shortly."
+                        "The report service is currently "
+                        "busy. The app automatically retried "
+                        "the request, but it is still "
+                        "unavailable. Please try again "
+                        "shortly."
                     )
 
                 else:
@@ -1484,3 +1743,19 @@ if st.button(
                     )
 
                     st.exception(e)
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown(
+    """
+    <div class="hbcc-footer">
+        HAWTHORN BOROONDARA CRICKET CLUB
+        &nbsp;&nbsp;•&nbsp;&nbsp;
+        MATCH REPORT GENERATOR
+    </div>
+    """,
+    unsafe_allow_html=True
+)
