@@ -18,39 +18,59 @@ st.set_page_config(
 
 
 # =========================================================
-# PLAYCRICKET
+# PLAYCRICKET DATA
 # =========================================================
 
 def extract_match_id(url):
-    match = re.search(r"/match/([a-fA-F0-9-]+)", url)
+    """Extract the PlayCricket match ID from a match URL."""
+
+    match = re.search(
+        r"/match/([a-fA-F0-9-]+)",
+        url
+    )
+
     return match.group(1) if match else None
 
 
 def fetch_json(url):
+    """Fetch JSON data from PlayCricket."""
+
     response = requests.get(
         url,
         timeout=30,
-        headers={"User-Agent": "Mozilla/5.0"}
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
     )
+
     response.raise_for_status()
+
     return response.json()
 
 
 def get_scorecard(match_id):
-    return fetch_json(
+    """Retrieve scorecard data."""
+
+    url = (
         "https://grassrootsapiproxy.cricket.com.au/"
         f"scores/matches/{match_id}"
         "?responseModifier=includeScorecard"
         "&jsconfig=eccn%3Atrue"
     )
 
+    return fetch_json(url)
+
 
 def get_ball_by_ball(match_id):
-    return fetch_json(
+    """Retrieve ball-by-ball data."""
+
+    url = (
         "https://grassrootsapiproxy.cricket.com.au/"
         f"scores/matches/{match_id}/balls"
         "?jsconfig=eccn%3Atrue"
     )
+
+    return fetch_json(url)
 
 
 # =========================================================
@@ -58,6 +78,8 @@ def get_ball_by_ball(match_id):
 # =========================================================
 
 def safe_name(name):
+    """Protect players whose names are hidden by PlayCricket."""
+
     if not name:
         return "Private Player"
 
@@ -70,9 +92,14 @@ def safe_name(name):
 
 
 def find_scorecard_innings(data):
+    """
+    Recursively locate scorecard innings objects.
+    """
+
     found = []
 
     def walk(item):
+
         if isinstance(item, dict):
 
             if (
@@ -95,6 +122,10 @@ def find_scorecard_innings(data):
 
 
 def flatten_balls(ball_container):
+    """
+    Recursively extract individual deliveries
+    from PlayCricket's nested ball structure.
+    """
 
     deliveries = []
 
@@ -124,6 +155,7 @@ def flatten_balls(ball_container):
 
 
 def get_team_lookup(ball_data):
+    """Create team ID -> team name lookup."""
 
     lookup = {}
 
@@ -373,7 +405,9 @@ def analyse_ball_innings(
             total_delivery_runs
         )
 
-        # WICKET
+        # -------------------------
+        # WICKETS
+        # -------------------------
 
         if ball.get(
             "dismissedParticipantId"
@@ -403,8 +437,7 @@ def analyse_ball_innings(
                 "wickets": progress_wickets,
                 "batter": dismissed_name,
                 "bowler": bowler,
-                "dismissal_type":
-                    dismissal_type,
+                "dismissal_type": dismissal_type,
                 "description": ball.get(
                     "description",
                     ""
@@ -413,7 +446,9 @@ def analyse_ball_innings(
 
             overs[over]["wickets"] += 1
 
-        # BOUNDARY
+        # -------------------------
+        # BOUNDARIES
+        # -------------------------
 
         if runs_bat >= 4:
 
@@ -429,7 +464,9 @@ def analyse_ball_innings(
                 "score": progress_runs
             })
 
-    # HIGH SCORING OVERS
+    # -------------------------
+    # HIGH-SCORING OVERS
+    # -------------------------
 
     big_overs = []
 
@@ -448,7 +485,9 @@ def analyse_ball_innings(
         reverse=True
     )
 
+    # -------------------------
     # WICKET CLUSTERS
+    # -------------------------
 
     wicket_clusters = []
 
@@ -467,15 +506,20 @@ def analyse_ball_innings(
         if run_difference <= 10:
 
             wicket_clusters.append({
-                "from":
+                "from": (
                     f"{first['score']}/"
-                    f"{first['wickets']}",
-                "to":
+                    f"{first['wickets']}"
+                ),
+                "to": (
                     f"{second['score']}/"
-                    f"{second['wickets']}",
-                "runs_between":
-                    run_difference
+                    f"{second['wickets']}"
+                ),
+                "runs_between": run_difference
             })
+
+    # -------------------------
+    # FINAL SCORE
+    # -------------------------
 
     final_score = ""
 
@@ -526,9 +570,7 @@ def analyse_ball_by_ball(ball_data):
 # GEMINI ARTICLE GENERATOR
 # =========================================================
 
-def get_word_target(
-    article_length
-):
+def get_word_target(article_length):
 
     if "300" in article_length:
         return 300
@@ -547,11 +589,16 @@ def generate_article(
     article_length
 ):
 
+    # -------------------------
+    # GEMINI API KEY
+    # -------------------------
+
     api_key = st.secrets.get(
         "GEMINI_API_KEY"
     )
 
     if not api_key:
+
         raise ValueError(
             "GEMINI_API_KEY has not been "
             "configured in Streamlit Secrets."
@@ -565,6 +612,10 @@ def generate_article(
         article_length
     )
 
+    # -------------------------
+    # CLEAN MATCH DATA
+    # -------------------------
+
     match_data = {
         "scorecard_analysis":
             score_analysis,
@@ -576,140 +627,219 @@ def generate_article(
             avoid_context
     }
 
+    # -------------------------
+    # ARTICLE PROMPT
+    # -------------------------
+
     prompt = f"""
-Write a cricket match report of approximately
-{word_target} words.
+You are the match reporter for Hawthorn Boroondara
+Cricket Club, also known as the HB Hawks.
 
-You are writing for Hawthorn Boroondara Cricket Club
-(HB Hawks).
-
-The article should read like a genuine local cricket
-match report written for the club website or social
-channels.
+Write a professional cricket match report of
+approximately {word_target} words.
 
 MATCH DATA:
+
 {json.dumps(match_data, indent=2)}
 
 WRITING REQUIREMENTS:
 
-- Start with a strong headline.
-- Follow the headline with the article.
+- Start with a strong, natural headline.
+- Follow the headline with the complete article.
 - Tell the story of the match rather than simply
   listing statistics.
 - Write chronologically where practical.
 - Explain how the innings developed.
-- Highlight important partnerships, wickets,
-  scoring periods and turning points when supported
-  by the supplied data.
-- Integrate individual performances naturally.
-- Give Hawthorn Boroondara appropriate focus,
-  but do not disrespect the opposition.
+- Identify momentum changes and turning points
+  when supported by the data.
+- Highlight significant partnerships, wickets,
+  scoring periods and individual performances.
+- Integrate statistics naturally into the story.
+- Give Hawthorn Boroondara appropriate focus.
+- Remain respectful of the opposition.
 - Use Australian English.
-- Use a professional but engaging community
-  cricket tone.
-- Do not make the writing overly dramatic.
+- Use a professional but engaging local/community
+  cricket journalism style.
+- Avoid overly dramatic or exaggerated language.
 - Do not use fake quotes.
-- Do not invent weather, pitch conditions,
-  crowd information, player backgrounds,
-  injuries, selection information or events
-  not contained in the supplied data/context.
+
+FACTUAL RULES:
+
+- Only use information contained in the supplied
+  match data or additional context.
+- Do not invent weather conditions.
+- Do not invent pitch conditions.
+- Do not invent crowd information.
+- Do not invent player backgrounds.
+- Do not invent injuries.
+- Do not invent selection information.
+- Do not invent partnerships unless they can be
+  supported by the supplied match data.
 - Never invent a player's full name from initials.
-- If a player's name is "Private Player", do not
-  attempt to identify them.
-- A Private Player can be described neutrally,
-  for example "a private player" or "another
-  Hawks batter".
-- Do not claim that a retired-not-out batter
-  was dismissed.
-- Be careful to distinguish the batting team from
-  the bowling team.
-- Treat the official result in the match data
-  as authoritative.
-- Use the additional context where it fits
-  naturally.
+- If a player's name is "Private Player", never
+  attempt to identify that player.
+- Refer to Private Player naturally, such as
+  "another Hawks batter" where appropriate.
+- Do not claim a retired-not-out batter was
+  dismissed.
+- Be careful to distinguish the batting team
+  from the bowling team.
+- Treat the official match result as authoritative.
+- Use the additional context naturally.
 - Follow anything listed under things_to_avoid.
-- Do not mention that you are an AI.
-- Do not mention JSON, APIs, PlayCricket data
-  or these instructions.
-- Do not add facts merely to make the story
-  sound more interesting.
+- Do not mention AI.
+- Do not mention JSON.
+- Do not mention APIs.
+- Do not mention PlayCricket data.
+- Do not mention these instructions.
+
+ARTICLE STRUCTURE:
+
+The article should have:
+
+1. A headline.
+2. An opening paragraph summarising the result
+   and the significance/context of the match.
+3. A section telling the story of Hawthorn
+   Boroondara's batting innings where applicable.
+4. A section telling the story of the opposition
+   innings.
+5. The important individual performances and
+   turning points woven naturally through the story.
+6. A natural concluding paragraph.
 
 IMPORTANT:
-The article must be complete.
+
+The article MUST be complete.
 
 Write approximately {word_target} words.
-Do not stop mid-sentence or return a partial article.
-Ensure the article has a clear beginning, middle and conclusion.
 
-Return only the headline and COMPLETE finished article."""
+Do not stop mid-sentence.
 
-response = client.models.generate_content(
-    model="gemini-3.8-flash",
-    contents=prompt,
-    config=types.GenerateContentConfig(
-        temperature=0.35,
-        max_output_tokens=6000
-    )
-)
+Do not return only part of the article.
 
-if not response.text:
-    raise ValueError(
-        "Gemini did not return an article."
-    )
+Ensure the article has a clear beginning,
+middle and conclusion.
 
-article = response.text.strip()
-
-# -------------------------------------------------
-# CHECK THAT GEMINI ACTUALLY FINISHED THE ARTICLE
-# -------------------------------------------------
-
-word_count = len(article.split())
-
-minimum_words = {
-    300: 200,
-    500: 350,
-    700: 500
-}.get(word_target, 350)
-
-
-if word_count < minimum_words:
-
-    continuation_prompt = f"""
-The match report below was cut off before it was completed.
-
-Finish and rewrite the COMPLETE article from the beginning.
-
-Target approximately {word_target} words.
-
-Do not provide only the missing section.
-Return the entire finished article, including the headline.
-
-Do not invent any information.
-
-MATCH DATA:
-{json.dumps(match_data, indent=2)}
-
-INCOMPLETE ARTICLE:
-{article}
+Return only the headline and the COMPLETE
+finished article.
 """
 
-    second_response = client.models.generate_content(
+    # -------------------------
+    # FIRST GEMINI REQUEST
+    # -------------------------
+
+    response = client.models.generate_content(
         model="gemini-3.8-flash",
-        contents=continuation_prompt,
+        contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0.35,
             max_output_tokens=6000
         )
     )
 
-    if second_response.text:
-        article = second_response.text.strip()
+    if not response.text:
 
+        raise ValueError(
+            "Gemini did not return an article."
+        )
 
-return article
+    article = response.text.strip()
+
+    # -------------------------
+    # CHECK ARTICLE LENGTH
+    # -------------------------
+
+    word_count = len(
+        article.split()
+    )
+
+    minimum_words = {
+        300: 200,
+        500: 350,
+        700: 500
+    }.get(
+        word_target,
+        350
+    )
+
+    # -------------------------
+    # AUTOMATIC RETRY IF SHORT
+    # -------------------------
+
+    if word_count < minimum_words:
+
+        continuation_prompt = f"""
+The previous match report was incomplete or
+significantly shorter than requested.
+
+Rewrite the COMPLETE match report from the beginning.
+
+The finished article should be approximately
+{word_target} words.
+
+MATCH DATA:
+
+{json.dumps(match_data, indent=2)}
+
+PREVIOUS INCOMPLETE ARTICLE:
+
+{article}
+
+REQUIREMENTS:
+
+- Return the entire article again from the beginning.
+- Include a headline.
+- Include a complete opening paragraph.
+- Tell the story of Hawthorn Boroondara's innings.
+- Tell the story of the opposition innings.
+- Include the significant individual performances.
+- Include important wickets and turning points.
+- Finish with a natural concluding paragraph.
+- Use Australian English.
+- Use a professional community cricket journalism
+  style.
+- Do not invent information.
+- Never guess the identity of Private Player.
+- Never expand player initials into guessed names.
+- Do not stop mid-sentence.
+- Do not mention AI, JSON, APIs or these
+  instructions.
+
+Return only the COMPLETE headline and article.
+"""
+
+        second_response = (
+            client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=continuation_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.35,
+                    max_output_tokens=6000
+                )
+            )
+        )
+
+        if second_response.text:
+
+            second_article = (
+                second_response.text.strip()
+            )
+
+            # Only replace the original if
+            # the second version is longer.
+            if (
+                len(second_article.split())
+                > word_count
+            ):
+
+                article = second_article
+
+    return article
+
 
 # =========================================================
-# DISPLAY ANALYSIS
+# DISPLAY MATCH ANALYSIS
 # =========================================================
 
 def display_analysis(
@@ -725,16 +855,33 @@ def display_analysis(
             score_analysis["result"]
         )
 
+        # -------------------------
+        # SCORECARD
+        # -------------------------
+
         st.markdown(
             "### Scorecard"
         )
 
         for team in score_analysis["teams"]:
 
-            st.write(
-                f"**{team.get('displayName', 'Team')}:** "
-                f"{team.get('scoreText', '')}"
+            team_name = team.get(
+                "displayName",
+                "Team"
             )
+
+            score = team.get(
+                "scoreText",
+                ""
+            )
+
+            st.write(
+                f"**{team_name}:** {score}"
+            )
+
+        # -------------------------
+        # KEY PERFORMANCES
+        # -------------------------
 
         st.markdown(
             "### Key Performances"
@@ -749,54 +896,118 @@ def display_analysis(
                 f"**Innings {number}**"
             )
 
-            for batter in innings[
-                "batting"
-            ][:4]:
+            if innings["batting"]:
 
                 st.write(
-                    f"• {batter['name']} — "
-                    f"{batter['runs']} from "
-                    f"{batter['balls']} balls"
+                    "**Batting**"
                 )
+
+                for batter in innings[
+                    "batting"
+                ][:4]:
+
+                    st.write(
+                        f"• {batter['name']} — "
+                        f"{batter['runs']} from "
+                        f"{batter['balls']} balls"
+                    )
 
             wicket_takers = [
                 bowler
-                for bowler in innings["bowling"]
+                for bowler
+                in innings["bowling"]
                 if bowler["wickets"] > 0
             ]
 
-            for bowler in wicket_takers[:4]:
+            if wicket_takers:
 
                 st.write(
-                    f"• {bowler['name']} — "
-                    f"{bowler['wickets']}/"
-                    f"{bowler['runs']} from "
-                    f"{bowler['overs']} overs"
+                    "**Bowling**"
                 )
 
+                for bowler in wicket_takers[:4]:
+
+                    st.write(
+                        f"• {bowler['name']} — "
+                        f"{bowler['wickets']}/"
+                        f"{bowler['runs']} from "
+                        f"{bowler['overs']} overs"
+                    )
+
+        # -------------------------
+        # BALL BY BALL STORY
+        # -------------------------
+
         st.markdown(
-            "### Match Story Data"
+            "### Ball-by-Ball Story"
         )
 
         for innings in story_analysis:
 
             st.markdown(
-                f"**{innings['team']}**"
+                f"#### {innings['team']}"
             )
 
-            for wicket in innings[
-                "wickets"
+            if innings["final_score"]:
+
+                st.write(
+                    f"Final score: "
+                    f"**{innings['final_score']}**"
+                )
+
+            if innings["wickets"]:
+
+                st.write(
+                    "**Wickets**"
+                )
+
+                for wicket in innings[
+                    "wickets"
+                ]:
+
+                    st.write(
+                        f"• {wicket['score']}/"
+                        f"{wicket['wickets']} — "
+                        f"{wicket['description']}"
+                    )
+
+            if innings["big_overs"]:
+
+                st.write(
+                    "**High-scoring overs**"
+                )
+
+                for over in innings[
+                    "big_overs"
+                ][:5]:
+
+                    st.write(
+                        f"• Over {over['over']}: "
+                        f"{over['runs']} runs"
+                    )
+
+            if innings[
+                "wicket_clusters"
             ]:
 
                 st.write(
-                    f"• {wicket['score']}/"
-                    f"{wicket['wickets']} — "
-                    f"{wicket['description']}"
+                    "**Wicket clusters**"
                 )
+
+                for cluster in innings[
+                    "wicket_clusters"
+                ][:5]:
+
+                    st.write(
+                        f"• {cluster['from']} "
+                        f"to {cluster['to']} "
+                        f"for {cluster['runs_between']} "
+                        f"runs"
+                    )
 
 
 # =========================================================
-# APP
+# APP INTERFACE
 # =========================================================
 
 st.title(
@@ -806,9 +1017,13 @@ st.title(
 st.write(
     "Paste a PlayCricket match link, add any "
     "extra context and generate a ready-to-use "
-    "match report."
+    "HB Hawks match report."
 )
 
+
+# -------------------------
+# MATCH URL
+# -------------------------
 
 match_url = st.text_input(
     "PlayCricket Match URL",
@@ -818,10 +1033,13 @@ match_url = st.text_input(
 )
 
 
+# -------------------------
+# CONTEXT
+# -------------------------
+
 st.subheader(
     "Match Context"
 )
-
 
 match_context = st.text_area(
     "Anything you'd like included?",
@@ -835,6 +1053,10 @@ match_context = st.text_area(
 )
 
 
+# -------------------------
+# AVOID
+# -------------------------
+
 avoid_context = st.text_area(
     "Anything you'd like avoided?",
     placeholder=(
@@ -843,6 +1065,10 @@ avoid_context = st.text_area(
     height=80
 )
 
+
+# -------------------------
+# ARTICLE LENGTH
+# -------------------------
 
 article_length = st.selectbox(
     "Article length",
@@ -856,7 +1082,7 @@ article_length = st.selectbox(
 
 
 # =========================================================
-# GENERATE
+# GENERATE MATCH REPORT
 # =========================================================
 
 if st.button(
@@ -887,6 +1113,10 @@ if st.button(
 
             try:
 
+                # -------------------------
+                # GET PLAYCRICKET DATA
+                # -------------------------
+
                 with st.spinner(
                     "Reading the scorecard and "
                     "ball-by-ball..."
@@ -916,6 +1146,9 @@ if st.button(
                         )
                     )
 
+                # -------------------------
+                # GENERATE ARTICLE
+                # -------------------------
 
                 with st.spinner(
                     "Writing match report..."
@@ -931,6 +1164,9 @@ if st.button(
                         )
                     )
 
+                # -------------------------
+                # DISPLAY ARTICLE
+                # -------------------------
 
                 st.success(
                     "Match report generated!"
@@ -946,15 +1182,39 @@ if st.button(
                     article
                 )
 
+                # -------------------------
+                # ARTICLE TEXT BOX
+                # -------------------------
+
+                st.subheader(
+                    "Copy Article"
+                )
+
+                st.text_area(
+                    "Article text",
+                    value=article,
+                    height=450
+                )
+
+                st.caption(
+                    f"Generated article: "
+                    f"{len(article.split())} words"
+                )
+
                 st.divider()
+
+                # -------------------------
+                # MATCH ANALYSIS
+                # -------------------------
 
                 display_analysis(
                     score_analysis,
                     story_analysis
                 )
 
-
-            except requests.exceptions.RequestException as e:
+            except (
+                requests.exceptions.RequestException
+            ) as e:
 
                 st.error(
                     "The PlayCricket match data "
@@ -962,7 +1222,6 @@ if st.button(
                 )
 
                 st.exception(e)
-
 
             except Exception as e:
 
