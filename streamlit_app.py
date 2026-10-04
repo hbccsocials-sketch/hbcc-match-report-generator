@@ -1430,30 +1430,19 @@ def display_analysis(
 # HERO
 # =========================================================
 
+hero_html = """
+<div class="hbcc-hero">
+<div class="hbcc-eyebrow">HAWTHORN BOROONDARA CRICKET CLUB</div>
+<div class="hbcc-accent"></div>
+<div class="hbcc-title">Match Report<br>Generator</div>
+<p class="hbcc-description">Turn a PlayCricket scorecard into a ready-to-publish match report in seconds.</p>
+</div>
+"""
+
 st.markdown(
-    """
-    <div class="hbcc-hero">
-
-        <div class="hbcc-eyebrow">
-            HAWTHORN BOROONDARA CRICKET CLUB
-        </div>
-
-        <div class="hbcc-accent"></div>
-
-        <div class="hbcc-title">
-            Match Report<br>Generator
-        </div>
-
-        <p class="hbcc-description">
-            Turn a PlayCricket scorecard into a
-            ready-to-publish match report in seconds.
-        </p>
-
-    </div>
-    """,
+    hero_html,
     unsafe_allow_html=True
 )
-
 
 # =========================================================
 # STEP 01
