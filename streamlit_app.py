@@ -399,7 +399,7 @@ def hbcc_team(obj, expected_id):
     return (
         (bool(expected_id) and expected_id in identifiers)
         or "hawthorn boroondara" in name
-        or name == "hb hawks"
+        or name == "Hawthorn Boroondara"
     )
 
 
@@ -1093,7 +1093,7 @@ def generate_article(
 
     prompt = f"""
 You are the cricket reporter for Hawthorn Boroondara
-Cricket Club, also known as HB Hawks.
+Cricket Club.
 
 Write a complete {mode.lower()} of approximately
 {target} words in Australian English.
