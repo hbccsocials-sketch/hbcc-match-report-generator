@@ -1132,8 +1132,7 @@ Return only the complete finished article.
     last_error = None
 
     for model in (
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite"
+        "gemini-3.5-flash-lite",
     ):
         for attempt in range(2):
             try:
