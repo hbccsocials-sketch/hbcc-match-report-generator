@@ -1103,7 +1103,7 @@ Begin with a compelling headline.
 Use the verified scorecard data and significant
 ball-by-ball moments to tell the story.
 
-For a Weekend Report:
+For a Weekend Wrap:
 - Cover every supplied fixture.
 - Include sections for each grade.
 - Create a cohesive club-wide narrative.
@@ -1192,7 +1192,7 @@ Return only the complete finished article.
 
 defaults = {
     "workflow": "setup",
-    "content_mode": "Weekend Report",
+    "content_mode": "Weekend Wrap",
     "fixtures": [],
     "selected_fixture_ids": [],
     "diagnostics": [],
@@ -1324,7 +1324,7 @@ if stage == "setup":
 
     modes = [
         "Match Report",
-        "Weekend Report",
+        "Weekend Wrap",
         "Team Selections"
     ]
 
@@ -1332,7 +1332,7 @@ if stage == "setup":
         "Match Report": (
             "One match, one complete article"
         ),
-        "Weekend Report": (
+        "Weekend Wrap": (
             "All the weekend action"
         ),
         "Team Selections": (
@@ -2085,7 +2085,7 @@ else:
 
     if mode in (
         "Match Report",
-        "Weekend Report"
+        "Weekend Wrap"
     ):
         if (
             mode == "Match Report"
