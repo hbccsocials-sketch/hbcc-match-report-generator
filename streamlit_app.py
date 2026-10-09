@@ -1398,15 +1398,13 @@ with right:
             for grade in all_grades
             if "women's" in grade.lower()
         ]
-
+    elif grade_choice == "All Abilities":
+        selected_grades = [
+            grade
+            for grade in all_grades
+            if "all abilities" in grade.lower()
+        ]
     else:
-        elif grade_choice == "All Abilities":
-    selected_grades = [
-        grade
-        for grade in all_grades
-        if "all abilities" in grade.lower()
-    ],
-        
         selected_grades = st.multiselect(
             "Choose individual grades",
             list(all_grades),
