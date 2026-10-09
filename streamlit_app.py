@@ -16,7 +16,7 @@ from google.genai import types
 
 st.set_page_config(
     page_title="HBCC Content Studio",
-    page_icon="🏏",
+    page_icon="https://static.wixstatic.com/media/629003_3235aad8ce9148d48818443fc6d8b5df%7Emv2.png/v1/fill/w_192%2Ch_192%2Clg_1%2Cusm_0.66_1.00_0.01/629003_3235aad8ce9148d48818443fc6d8b5df%7Emv2.png",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
