@@ -1688,16 +1688,19 @@ else:
             edited_rows
         )
 
-        st.subheader(
-            "Combined team announcement"
-        )
+        st.subheader("Combined team announcement")
 
-        st.text_area(
-            "Copy-ready selections",
-            value=output,
-            height=350
-        )
-
+        # Display the complete announcement without internal scrolling
+        st.code(output, language=None, wrap_lines=True)
+        
+        # Optional editing area
+        with st.expander("Edit or copy announcement"):
+            st.text_area(
+                "Copy-ready selections",
+                value=output,
+                height=450
+            )
+        
         st.download_button(
             "Download selections",
             output,
