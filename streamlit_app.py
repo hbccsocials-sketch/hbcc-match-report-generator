@@ -1338,9 +1338,21 @@ if st.button(
                     grade_id
                 )
 
-                records = collect_matches(
+                     records = collect_matches(
                     payload
                 )
+
+                # DIAGNOSTIC - CHECK MATCH SCHEDULE
+                st.subheader("PlayCricket match schedule diagnostic")
+
+                if records:
+                    st.write("First fixture ID:", records[0].get("id"))
+
+                    st.write("Match schedule:")
+                    st.json(records[0].get("matchSchedule"))
+
+                    st.write("Full fixture record:")
+                    st.json(records[0])
 
                 stats = {
                     "grade": grade,
