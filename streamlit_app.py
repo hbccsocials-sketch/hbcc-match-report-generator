@@ -1645,7 +1645,7 @@ else:
                     "Published HBCC players "
                     "(one per line; mark captain with (c))",
                     key=edit_key,
-                    height=220
+                    height=max(260, len(source_players) * 28 + 55)
                 )
 
                 players = [
