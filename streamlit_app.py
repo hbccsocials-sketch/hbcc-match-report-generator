@@ -1872,10 +1872,18 @@ elif stage == "review":
         st.markdown("### Review your matches")
 
     with back_col:
+        st.markdown(
+            "<div style='height: 8px;'></div>",
+            unsafe_allow_html=True
+        )
+    
         if st.button(
             "Back to setup",
             use_container_width=True
         ):
+            st.session_state.workflow = "setup"
+            st.rerun()
+
             st.session_state.workflow = "setup"
             st.rerun()
 
