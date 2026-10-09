@@ -1293,6 +1293,48 @@ steps = [
     ("export", "03 · Create & Export")
 ]
 
+# Navigation styling — HBCC yellow with navy text
+st.markdown("""
+<style>
+/* Only style the three progress navigation buttons */
+.st-key-nav_setup button,
+.st-key-nav_review button,
+.st-key-nav_export button {
+    background-color: #f5b82e !important;
+    color: #0f192d !important;
+    border: 1px solid #f5b82e !important;
+    font-weight: 700 !important;
+}
+
+/* Selected navigation step */
+.st-key-nav_setup button[kind="primary"],
+.st-key-nav_review button[kind="primary"],
+.st-key-nav_export button[kind="primary"] {
+    background-color: #e5a700 !important;
+    border: 2px solid #0f192d !important;
+    color: #0f192d !important;
+}
+
+/* Hover styling */
+.st-key-nav_setup button:hover,
+.st-key-nav_review button:hover,
+.st-key-nav_export button:hover {
+    background-color: #ffd15a !important;
+    border-color: #0f192d !important;
+    color: #0f192d !important;
+}
+
+/* Disabled navigation steps */
+.st-key-nav_setup button:disabled,
+.st-key-nav_review button:disabled,
+.st-key-nav_export button:disabled {
+    background-color: #f5b82e !important;
+    color: #0f192d !important;
+    opacity: 0.55;
+}
+</style>
+""", unsafe_allow_html=True)
+
 columns = st.columns(3, gap="small")
 
 for column, (step_key, label) in zip(columns, steps):
