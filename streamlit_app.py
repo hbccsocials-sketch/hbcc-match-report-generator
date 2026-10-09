@@ -1,17 +1,18 @@
 
-import re
 import json
+import re
 import time
-from datetime import date, timedelta, datetime
+from datetime import date, datetime, timedelta, timezone
+
 import requests
 import streamlit as st
 from google import genai
 from google.genai import types
 
 
-# =========================================================
-# APP CONFIGURATION
-# =========================================================
+# =====================================================
+# HBCC CONTENT STUDIO
+# =====================================================
 
 st.set_page_config(
     page_title="HBCC Content Studio",
@@ -26,32 +27,39 @@ HEADERS = {
     "Accept": "application/json"
 }
 
-DEFAULT_GRADES = {
-    "Women's 1st XI": {
-        "grade": "9b70ae63-142e-492b-b266-f42590204e93",
-        "team": "121436ac-b8db-40c5-9fdc-2bac4439419a"
-    },
-    "Men's 1st XI": {
-        "grade": "f5b98728-e7b2-40e6-af73-ac2eae56cedf",
-        "team": "94ced5f2-a9f0-4ab3-b8aa-c3d0a643deab"
-    },
-    "Men's 2nd XI": {
-        "grade": "d67df9f0-a982-461f-b0ee-4aa6bd89b6a6",
-        "team": "74392aeb-a39d-4f11-9d34-8bff6ca4690d"
-    }
+GRADES = {
+    "Women's 1st XI": (
+        "9b70ae63-142e-492b-b266-f42590204e93",
+        "121436ac-b8db-40c5-9fdc-2bac4439419a"
+    ),
+    "Men's 1st XI": (
+        "f5b98728-e7b2-40e6-af73-ac2eae56cedf",
+        "94ced5f2-a9f0-4ab3-b8aa-c3d0a643deab"
+    ),
+    "Men's 2nd XI": (
+        "d67df9f0-a982-461f-b0ee-4aa6bd89b6a6",
+        "74392aeb-a39d-4f11-9d34-8bff6ca4690d"
+    )
 }
 
+UUID = re.compile(
+    r"^[0-9a-fA-F]{8}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}$"
+)
 
-# =========================================================
-# HBCC STYLING
-# =========================================================
+
+# =====================================================
+# STYLING
+# =====================================================
 
 st.markdown(
     """
 <style>
 .stApp {
     background: #f5f7fa;
-    color: #0f192d;
 }
 
 .block-container {
@@ -61,65 +69,43 @@ st.markdown(
 
 .hbhero {
     background: linear-gradient(
-        120deg,
+        110deg,
         #0f192d,
-        #172c4b
+        #192f52
     );
-    color: white;
-    padding: 32px 36px;
-    border-radius: 18px;
+    padding: 30px 36px;
+    border-radius: 16px;
     border-bottom: 5px solid #c8102e;
-    margin-bottom: 24px;
+    margin-bottom: 22px;
 }
 
 .hbhero h1 {
     color: white !important;
-    font-size: 2.35rem;
-    margin: 4px 0 10px;
+    margin: 5px 0 10px;
+    font-size: 2.4rem;
 }
 
 .hbhero p {
-    color: #e1e7f0;
+    color: #e2e7ef;
     margin: 0;
 }
 
 .hbeyebrow {
-    font-size: 12px;
-    letter-spacing: 2px;
     color: #f5b82e;
+    font-size: 12px;
     font-weight: 800;
-}
-
-[data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 14px;
+    letter-spacing: 1.6px;
 }
 
 .stButton > button[kind="primary"] {
     background: #c8102e;
     border-color: #c8102e;
     color: white;
-    border-radius: 10px;
-    font-weight: 700;
-}
-
-[data-testid="stMetricValue"] {
-    color: #0f192d;
-}
-
-.hbfoot {
-    color: #667085;
-    font-size: 12px;
-    margin-top: 38px;
-    border-top: 1px solid #d9dee7;
-    padding-top: 15px;
 }
 </style>
 """,
     unsafe_allow_html=True
 )
-
-# Keep HTML on one line to avoid Streamlit
-# treating indented HTML as a code block.
 
 st.markdown(
     '<div class="hbhero">'
@@ -127,96 +113,53 @@ st.markdown(
     'HAWTHORN BOROONDARA CRICKET CLUB'
     '</div>'
     '<h1>Content Studio</h1>'
-    '<p>Find your fixtures by date and grade. '
-    'Generate match reports, weekend wrap-ups '
+    '<p>Find fixtures by date and grade. '
+    'Create match reports, weekend wrap-ups '
     'and team selections.</p>'
     '</div>',
     unsafe_allow_html=True
 )
 
 
-# =========================================================
-# PLAYCRICKET API
-# =========================================================
-
-@st.cache_data(ttl=900, show_spinner=False)
-def get_json(url):
-    response = requests.get(
-        url,
-        headers=HEADERS,
-        timeout=25
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def grade_fixtures(grade_id):
-    return get_json(
-        f"{BASE}/grades/{grade_id}/matches"
-        "?jsconfig=eccn%3Atrue"
-    )
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def match_detail(match_id):
-    return get_json(
-        f"{BASE}/matches/{match_id}"
-        "?responseModifier=includeScorecard"
-        "&jsconfig=eccn%3Atrue"
-    )
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def ball_detail(match_id):
-    return get_json(
-        f"{BASE}/matches/{match_id}/balls"
-        "?jsconfig=eccn%3Atrue"
-    )
-
-
-# =========================================================
+# =====================================================
 # GENERAL HELPERS
-# =========================================================
+# =====================================================
 
-def textval(value):
-    if isinstance(value, dict):
-        return str(
-            value.get("displayName")
-            or value.get("name")
-            or value.get("shortName")
-            or value.get("value")
-            or ""
+def get_name(obj):
+    if isinstance(obj, str):
+        return obj.strip()
+
+    if isinstance(obj, dict):
+        keys = (
+            "displayName",
+            "fullName",
+            "name",
+            "teamName",
+            "playerName",
+            "participantName",
+            "shortName",
+            "title"
         )
-    return str(value or "")
+
+        for key in keys:
+            value = obj.get(key)
+
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        for key in ("player", "participant", "team"):
+            value = obj.get(key)
+
+            if isinstance(value, dict):
+                name = get_name(value)
+
+                if name:
+                    return name
+
+    return ""
 
 
-def first(data, *keys):
-    if not isinstance(data, dict):
-        return None
-
-    for key in keys:
-        if data.get(key) is not None:
-            return data[key]
-
-    return None
-
-
-def iso_date(value):
-    if isinstance(value, dict):
-        for key in (
-            "startDate",
-            "startDateTime",
-            "date",
-            "scheduledStart",
-            "matchDate"
-        ):
-            if key in value:
-                result = iso_date(value[key])
-                if result:
-                    return result
-        return None
-
+def parse_date(value):
     if isinstance(value, (int, float)):
         try:
             timestamp = (
@@ -224,224 +167,457 @@ def iso_date(value):
                 if value > 1e11
                 else value
             )
+
             return datetime.fromtimestamp(
-                timestamp
+                timestamp,
+                tz=timezone.utc
             ).date()
-        except Exception:
+
+        except (ValueError, OverflowError, OSError):
             return None
 
     if isinstance(value, str):
         match = re.search(
-            r"(\d{4}-\d{2}-\d{2})",
+            r"\d{4}-\d{2}-\d{2}",
             value
         )
+
         if match:
             try:
                 return date.fromisoformat(
-                    match.group(1)
+                    match.group()
                 )
             except ValueError:
-                pass
+                return None
+
+    if isinstance(value, dict):
+        for key in (
+            "startDateTime",
+            "startDate",
+            "matchDate",
+            "date",
+            "scheduledStart",
+            "scheduledDate",
+            "startTime",
+            "start"
+        ):
+            if key in value:
+                result = parse_date(value[key])
+
+                if result:
+                    return result
 
     return None
 
 
-def find_match_objects(payload):
-    found = []
-    seen = set()
+def date_from_match(obj):
+    if not isinstance(obj, dict):
+        return None
 
-    def walk(obj):
-        if isinstance(obj, dict):
-            mid = first(
-                obj,
-                "matchId",
-                "matchID"
-            )
-
-            if (
-                not mid
-                and isinstance(obj.get("id"), str)
-                and (
-                    "homeTeam" in obj
-                    or "awayTeam" in obj
-                    or "teams" in obj
-                    or "matchDate" in obj
-                )
-            ):
-                mid = obj["id"]
-
-            if (
-                isinstance(mid, str)
-                and re.fullmatch(
-                    r"[0-9a-fA-F-]{36}",
-                    mid
-                )
-                and mid not in seen
-            ):
-                found.append(obj)
-                seen.add(mid)
-                return
-
-            for value in obj.values():
-                walk(value)
-
-        elif isinstance(obj, list):
-            for value in obj:
-                walk(value)
-
-    walk(payload)
-    return found
-
-
-def extract_teams(match):
-    teams = first(
-        match,
-        "teams",
-        "teamSummaries"
-    )
-
-    if isinstance(teams, list):
-        return teams
-
-    return [
-        team
-        for team in [
-            first(
-                match,
-                "homeTeam",
-                "homeTeamSummary"
-            ),
-            first(
-                match,
-                "awayTeam",
-                "awayTeamSummary"
-            )
-        ]
-        if isinstance(team, dict)
-    ]
-
-
-def match_label(match):
-    teams = extract_teams(match)
-    names = [textval(team) for team in teams]
-
-    return (
-        " vs ".join(
-            name for name in names if name
-        )
-        or textval(
-            first(match, "name", "title")
-        )
-        or "Fixture"
-    )
-
-
-def match_date(match):
-    for key in (
+    keys = (
         "startDateTime",
         "startDate",
         "matchDate",
         "date",
         "scheduledStart",
-        "schedule",
-        "matchSchedule"
-    ):
-        result = iso_date(match.get(key))
-        if result:
-            return result
+        "scheduledDate",
+        "startTime",
+        "start",
+        "matchStartDateTime",
+        "matchStartDate",
+        "matchDates",
+        "schedule"
+    )
+
+    for key in keys:
+        if key in obj:
+            result = parse_date(obj[key])
+
+            if result:
+                return result
 
     return None
 
 
-def match_id(match):
-    return first(
-        match,
-        "matchId",
-        "matchID",
-        "id"
+def id_from_match(obj):
+    if not isinstance(obj, dict):
+        return None
+
+    for key in ("matchId", "matchID", "id"):
+        value = obj.get(key)
+
+        if isinstance(value, str):
+            if UUID.fullmatch(value):
+                return value
+
+    for key in ("match", "matchSummary"):
+        nested = obj.get(key)
+
+        if isinstance(nested, dict):
+            result = id_from_match(nested)
+
+            if result:
+                return result
+
+    return None
+
+
+def match_teams(obj):
+    if not isinstance(obj, dict):
+        return []
+
+    for key in ("teams", "teamSummaries"):
+        value = obj.get(key)
+
+        if isinstance(value, list) and value:
+            return [
+                item
+                for item in value
+                if isinstance(item, dict)
+            ]
+
+    result = []
+
+    for key in (
+        "homeTeam",
+        "awayTeam",
+        "homeTeamSummary",
+        "awayTeamSummary"
+    ):
+        value = obj.get(key)
+
+        if isinstance(value, dict):
+            result.append(value)
+
+    if not result:
+        summary = obj.get("matchSummary")
+
+        if isinstance(summary, dict):
+            return match_teams(summary)
+
+    return result
+
+
+def team_id(team):
+    return str(
+        team.get("teamId")
+        or team.get("id")
+        or ""
     )
 
 
-def fixture_url(mid):
+def is_hbcc(team, expected_id=""):
+    name = get_name(team).lower()
+
+    return (
+        (
+            bool(expected_id)
+            and team_id(team) == expected_id
+        )
+        or "hawthorn boroondara" in name
+        or name == "hb hawks"
+    )
+
+
+def fixture_name(obj):
+    teams = match_teams(obj)
+
+    names = [
+        get_name(team)
+        for team in teams
+    ]
+
+    names = [
+        name
+        for name in names
+        if name
+    ]
+
+    if len(names) >= 2:
+        return " vs ".join(names[:2])
+
+    return get_name(obj) or "Match"
+
+
+def fixture_venue(obj):
+    if not isinstance(obj, dict):
+        return ""
+
+    for key in (
+        "venue",
+        "ground",
+        "venueName",
+        "groundName",
+        "location"
+    ):
+        value = obj.get(key)
+
+        if value:
+            return get_name(value) or str(value)
+
+    summary = obj.get("matchSummary")
+
+    if isinstance(summary, dict):
+        return fixture_venue(summary)
+
+    return ""
+
+
+# =====================================================
+# PLAYCRICKET API
+# =====================================================
+
+@st.cache_data(ttl=600, show_spinner=False)
+def api_get(path):
+    url = BASE + path
+
+    response = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_grade_matches(grade_id):
+    return api_get(
+        f"/grades/{grade_id}/matches"
+        "?jsconfig=eccn%3Atrue"
+    )
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_match(match_id):
+    return api_get(
+        f"/matches/{match_id}"
+        "?responseModifier=includeScorecard"
+        "&jsconfig=eccn%3Atrue"
+    )
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_balls(match_id):
+    return api_get(
+        f"/matches/{match_id}/balls"
+        "?jsconfig=eccn%3Atrue"
+    )
+
+
+def match_url(match_id):
     return (
         "https://play.cricket.com.au/"
-        f"match/{mid}"
+        f"match/{match_id}"
     )
 
 
-def hb_team(teams, team_id=""):
-    for team in teams:
-        if (
-            team_id
-            and str(
-                first(team, "id", "teamId")
-            ) == team_id
-        ):
-            return team
+# =====================================================
+# FIXTURE DISCOVERY
+# =====================================================
 
-    for team in teams:
-        if (
-            "hawthorn boroondara"
-            in textval(team).lower()
-        ):
-            return team
-
-    return None
-
-
-# =========================================================
-# TEAM SELECTION EXTRACTION
-# =========================================================
-
-def extract_players(detail, team_id):
+def collect_matches(payload):
     """
-    Extract players only from an identifiable
-    HBCC team selection.
-
-    Never infer a selected team from scorecards.
+    Search nested API data for match records.
+    Prefer records containing teams and dates.
     """
 
-    candidates = []
+    found = {}
+    visited = set()
 
     def walk(obj, depth=0):
-        if depth > 10:
+        if depth > 16:
+            return
+
+        if isinstance(obj, (dict, list)):
+            if id(obj) in visited:
+                return
+
+            visited.add(id(obj))
+
+        if isinstance(obj, dict):
+            mid = id_from_match(obj)
+
+            if mid:
+                score = (
+                    int(bool(match_teams(obj))) * 3
+                    + int(bool(date_from_match(obj))) * 2
+                    + len(obj) / 1000
+                )
+
+                previous = found.get(mid)
+
+                if (
+                    previous is None
+                    or score > previous[0]
+                ):
+                    found[mid] = (score, obj)
+
+            for value in obj.values():
+                if isinstance(value, (dict, list)):
+                    walk(value, depth + 1)
+
+        elif isinstance(obj, list):
+            for value in obj:
+                if isinstance(value, (dict, list)):
+                    walk(value, depth + 1)
+
+    walk(payload)
+
+    return [
+        item[1]
+        for item in found.values()
+    ]
+
+
+def manual_match_ids(raw):
+    matches = []
+
+    for token in re.split(r"[\s,]+", raw):
+        token = token.strip()
+
+        if not token:
+            continue
+
+        match = re.search(
+            r"/match/([0-9a-fA-F-]{36})",
+            token
+        )
+
+        mid = (
+            match.group(1)
+            if match
+            else (
+                token
+                if UUID.fullmatch(token)
+                else None
+            )
+        )
+
+        if mid and mid not in matches:
+            matches.append(mid)
+
+    return matches
+
+
+def build_fixture(
+    mid,
+    record,
+    grade,
+    expected_id,
+    detail=None
+):
+    obj = (
+        record
+        if isinstance(record, dict)
+        else {}
+    )
+
+    full = (
+        detail
+        if isinstance(detail, dict)
+        else {}
+    )
+
+    summary = full.get(
+        "matchSummary",
+        {}
+    )
+
+    if not isinstance(summary, dict):
+        summary = {}
+
+    fixture_date = (
+        date_from_match(obj)
+        or date_from_match(summary)
+        or date_from_match(full)
+    )
+
+    name = fixture_name(obj)
+
+    if name == "Match":
+        name = fixture_name(summary)
+
+    if name == "Match":
+        name = fixture_name(full)
+
+    venue = (
+        fixture_venue(obj)
+        or fixture_venue(summary)
+        or fixture_venue(full)
+    )
+
+    return {
+        "id": mid,
+        "name": name,
+        "grade": grade,
+        "team_id": expected_id,
+        "date": (
+            str(fixture_date)
+            if fixture_date
+            else ""
+        ),
+        "venue": venue,
+        "url": match_url(mid)
+    }
+
+
+# =====================================================
+# TEAM SELECTION EXTRACTION
+# =====================================================
+
+def find_hbcc_team(detail, expected_id):
+    """
+    Search team-selection structures.
+    Do not infer selected players from scorecards.
+    """
+
+    possible = []
+
+    def walk(obj, depth=0):
+        if depth > 12:
             return
 
         if isinstance(obj, dict):
-            teams = extract_teams(obj)
+            keys = (
+                "teams",
+                "teamSummaries",
+                "homeTeam",
+                "awayTeam",
+                "teamSelections",
+                "lineups",
+                "lineUps"
+            )
 
-            for team in teams:
-                if team is hb_team(
-                    [team],
-                    team_id
-                ):
-                    for key in (
-                        "players",
-                        "selectedPlayers",
-                        "lineup",
-                        "lineUp",
-                        "teamSelection",
-                        "participants",
-                        "selectedParticipants"
-                    ):
-                        value = team.get(key)
+            for key in keys:
+                value = obj.get(key)
 
-                        if isinstance(value, dict):
-                            value = first(
-                                value,
-                                "players",
-                                "participants",
-                                "selectedPlayers"
+                if isinstance(value, list):
+                    for item in value:
+                        if (
+                            isinstance(item, dict)
+                            and is_hbcc(
+                                item,
+                                expected_id
                             )
+                        ):
+                            possible.append(item)
 
-                        if isinstance(value, list):
-                            candidates.append(value)
+                elif isinstance(value, dict):
+                    if is_hbcc(
+                        value,
+                        expected_id
+                    ):
+                        possible.append(value)
 
             for key, value in obj.items():
                 if key in (
+                    "scorecard",
                     "batting",
                     "bowling",
-                    "scorecard",
+                    "innings",
                     "balls",
                     "deliveries"
                 ):
@@ -456,122 +632,167 @@ def extract_players(detail, team_id):
 
     walk(detail)
 
-    for player_list in candidates:
-        names = []
+    return possible
 
-        for player in player_list:
-            if isinstance(player, str):
-                name = player
-                captain = False
 
-            elif isinstance(player, dict):
-                name = textval(
-                    first(
-                        player,
-                        "player",
-                        "participant",
-                        "playerName",
-                        "participantName",
-                        "displayName",
-                        "name",
-                        "fullName",
-                        "playerShortName"
-                    )
+def selected_players(detail, expected_id):
+    teams = find_hbcc_team(
+        detail,
+        expected_id
+    )
+
+    for team in teams:
+        keys = (
+            "selectedPlayers",
+            "players",
+            "lineup",
+            "lineUp",
+            "teamSelection",
+            "participants",
+            "selectedParticipants"
+        )
+
+        for key in keys:
+            items = team.get(key)
+
+            if isinstance(items, dict):
+                items = next(
+                    (
+                        items.get(k)
+                        for k in (
+                            "selectedPlayers",
+                            "players",
+                            "participants"
+                        )
+                        if isinstance(
+                            items.get(k),
+                            list
+                        )
+                    ),
+                    None
                 )
 
-                captain = bool(
-                    first(
-                        player,
-                        "isCaptain",
-                        "captain"
-                    )
-                )
-
-                if not captain:
-                    role = str(
-                        first(
-                            player,
-                            "role",
-                            "teamRole"
-                        ) or ""
-                    ).lower()
-
-                    captain = role == "captain"
-            else:
+            if not isinstance(items, list):
                 continue
 
-            if (
-                name
-                and "*" not in name
-                and name.lower() not in (
-                    "none",
-                    "private player"
-                )
-            ):
-                if (
-                    captain
-                    and "(c)" not in name
-                ):
-                    name += " (c)"
+            names = []
 
-                names.append(name)
+            for item in items:
+                name = get_name(item)
 
-        names = list(dict.fromkeys(names))
+                if not name:
+                    continue
 
-        if names:
-            return names
+                if "*" in name:
+                    continue
+
+                if name.lower() == "private player":
+                    continue
+
+                if isinstance(item, dict):
+                    role = str(
+                        item.get("role")
+                        or item.get("teamRole")
+                        or ""
+                    ).lower()
+
+                    captain = (
+                        item.get("isCaptain") is True
+                        or item.get("captain") is True
+                        or role == "captain"
+                    )
+
+                    if (
+                        captain
+                        and "(c)" not in name.lower()
+                    ):
+                        name += " (c)"
+
+                if name not in names:
+                    names.append(name)
+
+            if names:
+                return names
 
     return []
 
 
-# =========================================================
+# =====================================================
 # SCORECARD ANALYSIS
-# =========================================================
+# =====================================================
 
-def score_summary(detail):
-    summary = detail.get(
-        "matchSummary",
-        {}
-    )
-
-    teams = (
-        summary.get("teams", [])
-        or extract_teams(detail)
-    )
-
-    return {
-        "result": textval(
-            summary.get("resultText")
-        ),
-        "teams": [
-            {
-                "name": textval(team),
-                "score": textval(
-                    first(
-                        team,
-                        "scoreText",
-                        "score"
-                    )
-                )
-            }
-            for team in teams
-        ]
-    }
-
-
-def score_innings(detail):
-    found = []
+def extract_innings(detail):
+    innings = []
 
     def walk(obj):
         if isinstance(obj, dict):
+            batting = obj.get("batting")
+            bowling = obj.get("bowling")
+
             if (
-                isinstance(
-                    obj.get("batting"),
-                    list
-                )
-                and "runsScored" in obj
+                isinstance(batting, list)
+                and isinstance(bowling, list)
             ):
-                found.append(obj)
+                bat = []
+                bowl = []
+
+                for player in batting:
+                    if not isinstance(player, dict):
+                        continue
+
+                    name = get_name(
+                        player.get("playerShortName")
+                        or player.get("playerName")
+                        or player.get("player")
+                    )
+
+                    if name and "*" not in name:
+                        bat.append({
+                            "name": name,
+                            "runs": player.get(
+                                "runsScored"
+                            ),
+                            "balls": player.get(
+                                "ballsFaced"
+                            ),
+                            "dismissal": player.get(
+                                "dismissalText"
+                            )
+                        })
+
+                for player in bowling:
+                    if not isinstance(player, dict):
+                        continue
+
+                    name = get_name(
+                        player.get("playerShortName")
+                        or player.get("playerName")
+                        or player.get("player")
+                    )
+
+                    if name and "*" not in name:
+                        bowl.append({
+                            "name": name,
+                            "wickets": player.get(
+                                "wicketsTaken"
+                            ),
+                            "runs": player.get(
+                                "runsConceded"
+                            ),
+                            "overs": player.get(
+                                "oversBowled"
+                            )
+                        })
+
+                innings.append({
+                    "runs": obj.get("runsScored"),
+                    "wickets": obj.get(
+                        "numberOfWicketsFallen"
+                    ),
+                    "batting": bat,
+                    "bowling": bowl
+                })
+
                 return
 
             for value in obj.values():
@@ -583,814 +804,845 @@ def score_innings(detail):
 
     walk(detail)
 
-    result = []
-
-    for innings in found:
-        batting = []
-        bowling = []
-
-        for player in innings.get(
-            "batting",
-            []
-        ):
-            name = textval(
-                first(
-                    player,
-                    "playerShortName",
-                    "playerName"
-                )
-            )
-
-            if name and "*" not in name:
-                batting.append({
-                    "name": name,
-                    "runs": player.get(
-                        "runsScored",
-                        0
-                    ),
-                    "balls": player.get(
-                        "ballsFaced",
-                        0
-                    ),
-                    "dismissal": textval(
-                        player.get(
-                            "dismissalText"
-                        )
-                    )
-                })
-
-        for player in innings.get(
-            "bowling",
-            []
-        ):
-            name = textval(
-                first(
-                    player,
-                    "playerShortName",
-                    "playerName"
-                )
-            )
-
-            if name and "*" not in name:
-                bowling.append({
-                    "name": name,
-                    "wickets": player.get(
-                        "wicketsTaken",
-                        0
-                    ),
-                    "runs": player.get(
-                        "runsConceded",
-                        0
-                    ),
-                    "overs": player.get(
-                        "oversBowled",
-                        0
-                    )
-                })
-
-        result.append({
-            "runs": innings.get(
-                "runsScored"
-            ),
-            "wickets": innings.get(
-                "numberOfWicketsFallen"
-            ),
-            "top_batting": sorted(
-                batting,
-                key=lambda x: x["runs"] or 0,
-                reverse=True
-            )[:6],
-            "top_bowling": sorted(
-                bowling,
-                key=lambda x: x["wickets"] or 0,
-                reverse=True
-            )[:6]
-        })
-
-    return result
+    return innings
 
 
-# =========================================================
-# BALL-BY-BALL ANALYSIS
-# =========================================================
+def ball_highlights(payload):
+    output = []
 
-def ball_events(payload):
-    if not isinstance(payload, dict):
-        return []
-
-    result = []
-
-    for innings in payload.get(
-        "innings",
-        []
-    ):
-        events = []
-
-        def walk(obj):
-            if isinstance(obj, dict):
+    def walk(obj):
+        if isinstance(obj, dict):
+            if (
+                "overNumber" in obj
+                and "ballNumber" in obj
+                and "progressRuns" in obj
+            ):
                 if (
-                    "overNumber" in obj
-                    and "ballNumber" in obj
-                    and "progressRuns" in obj
+                    obj.get("dismissedParticipantId")
+                    or (obj.get("runsBat") or 0) >= 4
                 ):
-                    if (
-                        obj.get(
-                            "dismissedParticipantId"
-                        )
-                        or (
-                            obj.get("runsBat") or 0
-                        ) >= 4
-                    ):
-                        events.append({
-                            "over": obj.get(
-                                "overNumber"
-                            ),
-                            "ball": obj.get(
-                                "ballNumber"
-                            ),
-                            "score": obj.get(
-                                "progressRuns"
-                            ),
-                            "wickets": obj.get(
-                                "progressWickets"
-                            ),
-                            "runs_bat": obj.get(
-                                "runsBat"
-                            ),
-                            "wicket": bool(
-                                obj.get(
-                                    "dismissedParticipantId"
-                                )
+                    output.append({
+                        "over": obj.get(
+                            "overNumber"
+                        ),
+                        "ball": obj.get(
+                            "ballNumber"
+                        ),
+                        "score": obj.get(
+                            "progressRuns"
+                        ),
+                        "wickets": obj.get(
+                            "progressWickets"
+                        ),
+                        "runs_off_bat": obj.get(
+                            "runsBat"
+                        ),
+                        "wicket": bool(
+                            obj.get(
+                                "dismissedParticipantId"
                             )
-                        })
-                    return
+                        ),
+                        "striker": obj.get(
+                            "strikerShortName"
+                        ),
+                        "bowler": obj.get(
+                            "bowlerShortName"
+                        )
+                    })
 
-                for value in obj.values():
-                    walk(value)
+                return
 
-            elif isinstance(obj, list):
-                for value in obj:
-                    walk(value)
+            for value in obj.values():
+                walk(value)
 
-        walk(
-            innings.get("balls", [])
-        )
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
 
-        result.append({
-            "innings": textval(
-                innings.get("inningsName")
-            ),
-            "key_deliveries": events[:80]
-        })
+    walk(payload)
 
-    return result
+    return output[:120]
 
 
-def report_data(
-    match,
-    detail,
-    include_balls=True
-):
+def report_payload(fixture):
+    mid = fixture["id"]
+
+    detail = get_match(mid)
+
+    summary = detail.get(
+        "matchSummary",
+        {}
+    )
+
     data = {
-        "fixture": match_label(match),
-        "date": str(
-            match_date(match) or ""
+        "fixture": fixture["name"],
+        "grade": fixture["grade"],
+        "date": fixture["date"],
+        "venue": fixture["venue"],
+        "result": summary.get(
+            "resultText"
         ),
-        "grade": match.get(
-            "_grade",
-            ""
+        "teams": (
+            match_teams(summary)
+            or match_teams(detail)
         ),
-        "official_score": score_summary(
-            detail
-        ),
-        "innings": score_innings(
+        "scorecard_innings": extract_innings(
             detail
         )
     }
 
-    if include_balls:
-        try:
-            data["ball_by_ball"] = (
-                ball_events(
-                    ball_detail(
-                        match_id(match)
-                    )
-                )
+    try:
+        data["ball_by_ball_highlights"] = (
+            ball_highlights(
+                get_balls(mid)
             )
-        except Exception:
-            data["ball_by_ball_status"] = (
-                "Unavailable; use scorecard only"
-            )
+        )
+
+    except Exception:
+        data["ball_by_ball_highlights"] = (
+            "Not available"
+        )
 
     return data
 
 
-# =========================================================
-# GEMINI ARTICLE GENERATION
-# =========================================================
+# =====================================================
+# GEMINI REPORT GENERATION
+# =====================================================
 
-def gemini_report(
-    data,
+def generate_report(
+    fixtures,
     mode,
     length,
     context,
-    avoid
+    exclusions
 ):
-    api_key = st.secrets.get(
+    key = st.secrets.get(
         "GEMINI_API_KEY",
         ""
     )
 
-    if not api_key:
+    if not key:
         raise RuntimeError(
-            "Add GEMINI_API_KEY to Streamlit "
-            "Secrets before generating articles."
+            "Missing GEMINI_API_KEY "
+            "in Streamlit Secrets."
         )
 
     client = genai.Client(
-        api_key=api_key
+        api_key=key
     )
 
-    if mode == "Match Report":
-        task = "ONE cricket match report"
-    else:
-        task = (
-            "ONE cohesive weekend report "
-            "covering every supplied fixture"
-        )
+    payload = [
+        report_payload(fixture)
+        for fixture in fixtures
+    ]
 
     prompt = f"""
-You are writing for Hawthorn Boroondara
-Cricket Club, known as the HB Hawks.
+You are the match reporter for
+Hawthorn Boroondara Cricket Club
+(HB Hawks).
 
-Write {task} of approximately {length} words.
+Write a finished {mode.lower()} of
+approximately {length} words.
 
-Use Australian English and a professional,
-engaging local cricket journalism style.
+Use Australian English.
 
-For a weekend report, organise the story
-around the club's overall weekend, with
-clear coverage of every supplied match.
+Begin with an engaging headline.
 
-For a single match report, tell the story
-of the match chronologically where possible.
+Cover every supplied match, including
+important performances, results and
+changes in momentum.
 
-Start with a strong headline.
+Use chronological storytelling where
+the data supports it.
 
-Include important batting and bowling
-performances, results and turning points.
+For weekend reports, create one cohesive
+club-wide story with clear coverage of
+each fixture.
 
-Use the official scorecard result as
+For individual match reports, focus on
+the story of that specific game.
+
+Do not invent:
+- Quotes
+- Weather
+- Pitch conditions
+- Tactics
+- Partnerships
+- Player backgrounds
+- Results
+- Other unsupported facts
+
+Never guess private player names.
+
+Treat the official match result as
 authoritative.
 
-Only use supplied match facts.
-
-Never invent weather, pitch conditions,
-quotes, player backgrounds, partnerships,
-injuries or tactical decisions.
-
-If a result is unavailable, do not infer
-a win or loss.
-
-Do not guess private player identities.
-
-Do not interpret retired not out as
-a dismissal.
+Do not invent outcomes for incomplete
+matches.
 
 Respect the opposition.
 
-Extra context:
+Additional context:
 {context}
 
 Things to avoid:
-{avoid}
+{exclusions}
 
 MATCH DATA:
-{json.dumps(data, ensure_ascii=False, default=str)}
+{json.dumps(payload, ensure_ascii=False, default=str)}
 
-Return only the finished headline and
-complete article.
+Return only the complete headline
+and finished article.
 """
 
     last_error = None
 
-    models = [
+    for model in (
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite"
-    ]
-
-    for model in models:
-        for attempt in range(3):
+    ):
+        for attempt in range(2):
             try:
                 response = (
                     client.models.generate_content(
                         model=model,
                         contents=prompt,
                         config=types.GenerateContentConfig(
-                            temperature=0.3,
-                            max_output_tokens=6000
+                            temperature=0.35,
+                            max_output_tokens=6500
                         )
                     )
                 )
 
-                article = (
-                    response.text or ""
-                ).strip()
-
-                if article:
-                    return article
+                if (
+                    response.text
+                    and response.text.strip()
+                ):
+                    return response.text.strip()
 
             except Exception as error:
                 last_error = error
+
                 error_text = str(error).lower()
 
                 if any(
                     item in error_text
-                    for item in [
-                        "503",
+                    for item in (
                         "429",
+                        "503",
                         "unavailable",
-                        "high demand",
                         "resource_exhausted"
-                    ]
+                    )
                 ):
                     time.sleep(
-                        2 + attempt * 2
+                        2 + 2 * attempt
                     )
                     continue
 
-                if any(
-                    item in error_text
-                    for item in [
-                        "404",
-                        "not found",
-                        "not supported"
-                    ]
+                if (
+                    "404" in error_text
+                    or "not found" in error_text
                 ):
                     break
 
                 raise
 
     raise RuntimeError(
-        f"Article generation failed: "
-        f"{last_error}"
+        "Gemini could not generate "
+        f"the report: {last_error}"
     )
 
 
-# =========================================================
-# EXTRA GRADE CONFIGURATION
-# =========================================================
+# =====================================================
+# TEAM SELECTION FORMATTING
+# =====================================================
 
-def parse_extra_grades(raw):
-    result = {}
-
-    for line in raw.splitlines():
-        if not line.strip():
-            continue
-
-        parts = [
-            part.strip()
-            for part in line.split("|")
-        ]
-
-        if (
-            len(parts) == 3
-            and re.fullmatch(
-                r"[0-9a-fA-F-]{36}",
-                parts[1]
-            )
-        ):
-            result[parts[0]] = {
-                "grade": parts[1],
-                "team": parts[2]
-            }
-
-    return result
-
-
-# =========================================================
-# TEAM SELECTION OUTPUT
-# =========================================================
-
-def selection_text(items):
-    output = [
+def formatted_selections(items):
+    lines = [
         "HAWTHORN BOROONDARA CRICKET CLUB",
         "TEAM SELECTIONS",
         ""
     ]
 
     for item in items:
-        output.extend([
+        lines.extend([
             item["grade"].upper(),
-            item["fixture"],
-            (
-                f"Date: {item['date']} | "
-                f"Venue: {item['venue']}"
+            item["name"],
+            " | ".join(
+                value
+                for value in (
+                    item["date"],
+                    item["venue"]
+                )
+                if value
             )
         ])
 
         if item["players"]:
-            output.extend(
-                f"{index}. {player}"
-                for index, player in enumerate(
+            lines.extend(
+                f"{index}. {name}"
+                for index, name in enumerate(
                     item["players"],
                     1
                 )
             )
-
-            output.append(
-                "Published players: "
-                f"{len(item['players'])}"
-            )
         else:
-            output.append(
-                "Selection not available — "
-                "verify on PlayCricket"
+            lines.append(
+                "Team selection not available"
             )
 
-        output.append("")
+        lines.append("")
 
-    return "\n".join(output)
-
-
-# =========================================================
-# SESSION STATE
-# =========================================================
-
-if "matches" not in st.session_state:
-    st.session_state.matches = []
-
-if "article" not in st.session_state:
-    st.session_state.article = ""
-
-if "selection_output" not in st.session_state:
-    st.session_state.selection_output = ""
+    return "\n".join(lines)
 
 
-# =========================================================
-# SIDEBAR — GRADE MANAGEMENT
-# =========================================================
+# =====================================================
+# SIDEBAR — ADDITIONAL GRADES
+# =====================================================
 
 with st.sidebar:
-    st.subheader("Grades")
+    st.header("HBCC grades")
 
     st.caption(
-        "Three HBCC grades are preconfigured. "
-        "Add more below as you obtain their "
+        "Three grades are already configured. "
+        "Add others using their PlayCricket "
         "grade and team IDs."
     )
 
-    extra_grades = st.text_area(
+    additional = st.text_area(
         "Additional grades (optional)",
         placeholder=(
-            "Men's 3rd XI | grade-uuid | team-uuid"
+            "Men's 3rd XI | GRADE_ID | TEAM_ID"
         ),
-        height=105,
-        help=(
-            "One per line: "
-            "Grade name | grade ID | team ID"
-        )
-    )
-
-    st.caption(
-        "To find IDs, use the grade URL: "
-        "/grade/GRADE_ID?teamId=TEAM_ID"
+        height=100
     )
 
     if st.button(
-        "Clear cached PlayCricket data"
+        "Clear PlayCricket cache"
     ):
         st.cache_data.clear()
-        st.success("Cache cleared")
+
+        st.success(
+            "Cache cleared"
+        )
+
+    st.caption(
+        "If fixtures are missing, expand "
+        "the search diagnostics after "
+        "clicking Find fixtures."
+    )
 
 
-all_grades = {
-    **DEFAULT_GRADES,
-    **parse_extra_grades(extra_grades)
-}
+all_grades = dict(GRADES)
+
+for line in additional.splitlines():
+    parts = [
+        part.strip()
+        for part in line.split("|")
+    ]
+
+    if (
+        len(parts) == 3
+        and UUID.fullmatch(parts[1])
+        and UUID.fullmatch(parts[2])
+    ):
+        all_grades[parts[0]] = (
+            parts[1],
+            parts[2]
+        )
 
 
-# =========================================================
-# CHOOSE GENERATOR
-# =========================================================
+# =====================================================
+# SELECT GENERATOR
+# =====================================================
 
 mode = st.radio(
     "What would you like to create?",
-    [
+    (
         "Match Report",
         "Weekend Report",
         "Team Selections"
-    ],
+    ),
     horizontal=True
 )
 
 
-# =========================================================
+# =====================================================
 # STEP 1 — SELECT DATES
-# =========================================================
+# =====================================================
 
-left, right = st.columns(
-    [1, 1.2]
-)
+left, right = st.columns(2)
 
 with left:
-    st.markdown(
-        "#### 1. Choose dates"
+    st.subheader(
+        "1. Choose dates"
     )
 
     date_mode = st.radio(
-        "Date selection",
-        [
+        "Date mode",
+        (
             "Date range",
             "Individual dates"
-        ],
+        ),
         horizontal=True,
         label_visibility="collapsed"
     )
 
     if date_mode == "Date range":
-        start = date.today()
-        end = start + timedelta(days=1)
-
-        selected_range = st.date_input(
-            "Match dates",
-            value=(start, end)
+        chosen = st.date_input(
+            "Match date range",
+            value=(
+                date.today(),
+                date.today() + timedelta(days=1)
+            )
         )
+
+        selected_dates = set()
 
         if (
-            isinstance(
-                selected_range,
-                tuple
-            )
-            and len(selected_range) == 2
+            isinstance(chosen, (tuple, list))
+            and len(chosen) == 2
         ):
-            dates = {
-                date.fromordinal(day)
-                for day in range(
-                    selected_range[0].toordinal(),
-                    selected_range[-1].toordinal() + 1
+            start, end = chosen
+
+            if (end - start).days <= 45:
+                selected_dates = {
+                    start + timedelta(days=i)
+                    for i in range(
+                        (end - start).days + 1
+                    )
+                }
+            else:
+                st.warning(
+                    "Please use a date range "
+                    "of 46 days or less."
                 )
-            }
-        else:
-            dates = set()
 
     else:
-        available_dates = [
-            date.today() + timedelta(days=i)
-            for i in range(-90, 120)
-        ]
-
-        chosen_dates = st.multiselect(
-            "Select dates",
-            available_dates,
-            default=[date.today()],
-            format_func=lambda value: (
-                value.strftime(
-                    "%a %d %b %Y"
-                )
-            )
+        count = st.number_input(
+            "How many dates?",
+            min_value=1,
+            max_value=10,
+            value=1
         )
 
-        dates = set(chosen_dates)
+        selected_dates = set()
+
+        for i in range(count):
+            selected_dates.add(
+                st.date_input(
+                    f"Date {i + 1}",
+                    value=(
+                        date.today()
+                        + timedelta(days=i)
+                    ),
+                    key=f"pick_date_{i}"
+                )
+            )
 
 
-# =========================================================
+# =====================================================
 # STEP 2 — SELECT GRADES
-# =========================================================
+# =====================================================
 
 with right:
-    st.markdown(
-        "#### 2. Choose grades"
+    st.subheader(
+        "2. Choose grades"
     )
 
     selected_grades = st.multiselect(
         "HBCC grades",
         list(all_grades),
-        default=list(DEFAULT_GRADES)
+        default=list(GRADES)
     )
 
     st.caption(
-        "Select one or multiple grades. "
-        "Only matching fixtures will "
-        "be included."
+        "Choose one or several grades."
     )
 
 
-# =========================================================
+# =====================================================
+# OPTIONAL MANUAL MATCH LINKS
+# =====================================================
+
+with st.expander(
+    "Fallback: add match links manually (optional)"
+):
+    manual_links = st.text_area(
+        "One PlayCricket match URL per line",
+        placeholder=(
+            "https://play.cricket.com.au/match/..."
+        ),
+        height=90
+    )
+
+    st.caption(
+        "Useful if the grade fixture endpoint "
+        "does not expose the match. Manual "
+        "matches can still be used in "
+        "all three generators."
+    )
+
+
+# =====================================================
+# SESSION STATE
+# =====================================================
+
+if "fixtures" not in st.session_state:
+    st.session_state.fixtures = []
+
+if "diagnostics" not in st.session_state:
+    st.session_state.diagnostics = []
+
+if "article" not in st.session_state:
+    st.session_state.article = ""
+
+if "selection_rows" not in st.session_state:
+    st.session_state.selection_rows = []
+
+
+# =====================================================
 # FIND FIXTURES
-# =========================================================
+# =====================================================
 
 if st.button(
     "🔎 Find HBCC fixtures",
     type="primary",
     use_container_width=True,
     disabled=(
-        not dates
-        or not selected_grades
+        not selected_grades
+        or not selected_dates
     )
 ):
-    results = []
-    errors = []
-    seen = set()
+    found = {}
+    diagnostics = []
 
     with st.spinner(
-        "Searching PlayCricket fixtures..."
+        "Searching PlayCricket..."
     ):
         for grade in selected_grades:
-            config = all_grades[grade]
+            grade_id, expected_id = (
+                all_grades[grade]
+            )
 
             try:
-                payload = grade_fixtures(
-                    config["grade"]
+                payload = get_grade_matches(
+                    grade_id
                 )
 
-  fixtures = find_match_objects(payload)
+                records = collect_matches(
+                    payload
+                )
 
-                st.write("Grade being checked:", grade)
-                st.write("API response type:", type(payload).__name__)
-                st.write("Matches identified:", len(fixtures))
+                stats = {
+                    "grade": grade,
+                    "api_response_type": (
+                        type(payload).__name__
+                    ),
+                    "records_identified": len(records),
+                    "records_without_date": 0,
+                    "records_outside_dates": 0,
+                    "records_other_team": 0,
+                    "matched": 0,
+                    "sample_top_level_keys": (
+                        list(payload)[:20]
+                        if isinstance(payload, dict)
+                        else []
+                    ),
+                    "sample_record_keys": (
+                        list(records[0])[:25]
+                        if records
+                        else []
+                    )
+                }
 
-                with st.expander("View PlayCricket API response"):
-                    st.json(payload)
-
-with st.expander("View PlayCricket API response"):
-    st.json(payload)
-    
-                if not fixtures:
-                    errors.append(
-                        f"{grade}: no recognisable "
-                        "match records in API response."
+                for record in records:
+                    mid = id_from_match(
+                        record
                     )
 
-                for match in fixtures:
-                    mid = match_id(match)
-
-                    if mid in seen:
+                    if not mid:
                         continue
 
-                    fixture_date = match_date(
-                        match
+                    when = date_from_match(
+                        record
                     )
 
-                    if fixture_date not in dates:
-                        continue
-
-                    teams = extract_teams(
-                        match
-                    )
+                    detail = None
 
                     if (
-                        teams
-                        and not hb_team(
-                            teams,
-                            config["team"]
-                        )
+                        not when
+                        or not match_teams(record)
                     ):
+                        try:
+                            detail = get_match(mid)
+
+                            when = (
+                                when
+                                or date_from_match(
+                                    detail.get(
+                                        "matchSummary",
+                                        {}
+                                    )
+                                )
+                                or date_from_match(
+                                    detail
+                                )
+                            )
+
+                        except Exception:
+                            pass
+
+                    if not when:
+                        stats[
+                            "records_without_date"
+                        ] += 1
+
                         continue
 
-                    seen.add(mid)
+                    if when not in selected_dates:
+                        stats[
+                            "records_outside_dates"
+                        ] += 1
 
-                    copy = dict(match)
+                        continue
 
-                    copy["_grade"] = grade
-                    copy["_team_id"] = (
-                        config["team"]
+                    teams = (
+                        match_teams(record)
+                        or match_teams(
+                            detail or {}
+                        )
                     )
 
-                    results.append(copy)
+                    if teams:
+                        if not any(
+                            is_hbcc(
+                                team,
+                                expected_id
+                            )
+                            for team in teams
+                        ):
+                            stats[
+                                "records_other_team"
+                            ] += 1
+
+                            continue
+
+                    if mid not in found:
+                        found[mid] = build_fixture(
+                            mid,
+                            record,
+                            grade,
+                            expected_id,
+                            detail
+                        )
+
+                        stats["matched"] += 1
+
+                diagnostics.append(stats)
 
             except Exception as error:
-                errors.append(
-                    f"{grade}: {error}"
+                diagnostics.append({
+                    "grade": grade,
+                    "error": str(error)
+                })
+
+        # -----------------------------------------
+        # OPTIONAL MANUAL MATCHES
+        # -----------------------------------------
+
+        for mid in manual_match_ids(
+            manual_links
+        ):
+            if mid in found:
+                continue
+
+            try:
+                detail = get_match(mid)
+
+                summary = detail.get(
+                    "matchSummary",
+                    {}
                 )
 
-    st.session_state.matches = sorted(
-        results,
-        key=lambda match: (
-            str(match_date(match)),
-            match["_grade"]
+                teams = (
+                    match_teams(summary)
+                    or match_teams(detail)
+                )
+
+                grade = next(
+                    (
+                        g
+                        for g in selected_grades
+                        if any(
+                            is_hbcc(
+                                team,
+                                all_grades[g][1]
+                            )
+                            for team in teams
+                        )
+                    ),
+                    selected_grades[0]
+                )
+
+                fixture = build_fixture(
+                    mid,
+                    summary or detail,
+                    grade,
+                    all_grades[grade][1],
+                    detail
+                )
+
+                found[mid] = fixture
+
+            except Exception as error:
+                diagnostics.append({
+                    "manual_match_id": mid,
+                    "error": str(error)
+                })
+
+    st.session_state.fixtures = sorted(
+        found.values(),
+        key=lambda fixture: (
+            fixture["date"],
+            fixture["grade"]
         )
     )
 
+    st.session_state.diagnostics = diagnostics
+
     st.session_state.article = ""
-    st.session_state.selection_output = ""
-    st.session_state.selection_items = []
-    st.session_state.search_errors = errors
+
+    st.session_state.selection_rows = []
 
 
-# =========================================================
+# =====================================================
 # STEP 3 — REVIEW FIXTURES
-# =========================================================
+# =====================================================
 
-matches = st.session_state.matches
-
-if st.session_state.get(
-    "search_errors"
-):
-    with st.expander(
-        "Fixture search notes"
-    ):
-        for error in st.session_state.search_errors:
-            st.warning(error)
-
-
-st.markdown(
-    "#### 3. Review fixtures"
+st.subheader(
+    "3. Review fixtures"
 )
 
-chosen_matches = []
+fixtures = st.session_state.fixtures
 
-if matches:
+chosen_fixtures = []
+
+if fixtures:
     st.success(
-        f"{len(matches)} fixture(s) found. "
-        "Select which to include."
+        f"{len(fixtures)} fixture(s) found. "
+        "Choose the matches you want to include."
     )
 
-    for match in matches:
-        mid = match_id(match)
-
-        label = (
-            f"{match_date(match)} · "
-            f"{match['_grade']} · "
-            f"{match_label(match)}"
+    for fixture in fixtures:
+        label = " · ".join(
+            value
+            for value in (
+                fixture["date"],
+                fixture["grade"],
+                fixture["name"]
+            )
+            if value
         )
 
         if st.checkbox(
             label,
             value=True,
-            key="match_" + mid
+            key="fixture_" + fixture["id"]
         ):
-            chosen_matches.append(match)
+            chosen_fixtures.append(
+                fixture
+            )
 
         st.caption(
-            f"[View on PlayCricket]"
-            f"({fixture_url(mid)})"
+            f"[View match on PlayCricket]"
+            f"({fixture['url']})"
         )
 
 else:
     st.info(
-        "Choose dates and grades, then select "
+        "No fixtures loaded. Click "
         "**Find HBCC fixtures**. "
-        "If none appear, check the date range "
-        "and configured grade IDs."
+        "If nothing is found, open "
+        "the diagnostics below."
     )
+
+
+# =====================================================
+# SEARCH DIAGNOSTICS
+# =====================================================
+
+if st.session_state.diagnostics:
+    with st.expander(
+        "Fixture search diagnostics",
+        expanded=not bool(fixtures)
+    ):
+        st.json(
+            st.session_state.diagnostics
+        )
+
+        st.caption(
+            "These counts help identify whether "
+            "the API is returning matches, "
+            "whether dates are missing, or "
+            "whether the request failed."
+        )
 
 
 st.divider()
 
 
-# =========================================================
+# =====================================================
 # MATCH REPORT / WEEKEND REPORT
-# =========================================================
+# =====================================================
 
 if mode in (
     "Match Report",
     "Weekend Report"
 ):
-    st.markdown(
-        "#### 4. Generate article"
+    st.subheader(
+        "4. Generate article"
     )
 
     if (
         mode == "Match Report"
-        and len(chosen_matches) > 1
+        and chosen_fixtures
     ):
-        options = {
-            (
-                f"{match['_grade']} · "
-                f"{match_label(match)} · "
-                f"{match_date(match)}"
-            ): match
-            for match in chosen_matches
-        }
-
-        picked = st.selectbox(
-            "Choose the match to write about",
-            list(options)
+        selected = st.selectbox(
+            "Choose one match",
+            chosen_fixtures,
+            format_func=lambda fixture: (
+                f"{fixture['grade']} — "
+                f"{fixture['name']} "
+                f"({fixture['date']})"
+            )
         )
 
-        report_matches = [
-            options[picked]
+        report_fixtures = [
+            selected
         ]
 
     else:
-        report_matches = chosen_matches
+        report_fixtures = (
+            chosen_fixtures
+        )
 
     context = st.text_area(
-        "Extra context (optional)",
+        "Additional context (optional)",
         placeholder=(
-            "Club debut, first game of "
-            "the season, special milestone..."
+            "Milestones, debuts, "
+            "club context..."
         )
     )
 
-    avoid = st.text_area(
+    exclusions = st.text_area(
         "Anything to avoid (optional)",
         height=70
     )
 
     length = st.select_slider(
-        "Report length (approximate words)",
+        "Target article length",
         options=[
             300,
             500,
@@ -1408,60 +1660,32 @@ if mode in (
     if st.button(
         "Generate " + mode,
         type="primary",
-        disabled=not report_matches
+        disabled=not report_fixtures
     ):
-        data = []
-        failures = []
-
-        with st.spinner(
-            "Reading selected scorecards "
-            "and ball-by-ball..."
-        ):
-            for match in report_matches:
-                try:
-                    detail = match_detail(
-                        match_id(match)
+        try:
+            with st.spinner(
+                "Reading scorecards "
+                "and writing the article..."
+            ):
+                st.session_state.article = (
+                    generate_report(
+                        report_fixtures,
+                        mode,
+                        length,
+                        context,
+                        exclusions
                     )
+                )
 
-                    data.append(
-                        report_data(
-                            match,
-                            detail,
-                            True
-                        )
-                    )
-
-                except Exception as error:
-                    failures.append(
-                        f"{match['_grade']}: "
-                        f"{error}"
-                    )
-
-        if failures:
-            for failure in failures:
-                st.error(failure)
-
-        if data:
-            try:
-                with st.spinner(
-                    "Writing your article..."
-                ):
-                    st.session_state.article = (
-                        gemini_report(
-                            data,
-                            mode,
-                            length,
-                            context,
-                            avoid
-                        )
-                    )
-
-            except Exception as error:
-                st.error(str(error))
+        except Exception as error:
+            st.error(
+                "Could not generate article: "
+                + str(error)
+            )
 
     if st.session_state.article:
-        st.markdown(
-            "### Your report"
+        st.subheader(
+            "Your article"
         )
 
         st.markdown(
@@ -1469,181 +1693,156 @@ if mode in (
         )
 
         st.text_area(
-            "Copy or edit article",
-            value=st.session_state.article,
-            height=360
+            "Copy the article",
+            st.session_state.article,
+            height=330
         )
 
         st.download_button(
-            "Download article (.txt)",
+            "Download article",
             st.session_state.article,
             file_name="hbcc_report.txt",
             mime="text/plain"
         )
 
         st.caption(
-            "Check scores, names and context "
-            "against PlayCricket before publishing."
+            "Please verify results and names "
+            "before publishing."
         )
 
 
-# =========================================================
+# =====================================================
 # TEAM SELECTIONS GENERATOR
-# =========================================================
+# =====================================================
 
 else:
-    st.markdown(
-        "#### 4. Review published selections"
+    st.subheader(
+        "4. Retrieve selected teams"
     )
 
     if st.button(
         "Retrieve selected teams",
         type="primary",
-        disabled=not chosen_matches
+        disabled=not chosen_fixtures
     ):
-        items = []
+        rows = []
 
         with st.spinner(
-            "Checking published HBCC team lists..."
+            "Retrieving published "
+            "team selections..."
         ):
-            for match in chosen_matches:
-                mid = match_id(match)
+            for fixture in chosen_fixtures:
+                row = dict(fixture)
+
+                row["players"] = []
+                row["error"] = ""
 
                 try:
-                    detail = match_detail(mid)
-
-                    players = extract_players(
-                        detail,
-                        match["_team_id"]
+                    detail = get_match(
+                        fixture["id"]
                     )
 
-                    venue = (
-                        textval(
-                            first(
-                                match,
-                                "venue",
-                                "ground",
-                                "venueName"
-                            )
+                    row["players"] = (
+                        selected_players(
+                            detail,
+                            fixture["team_id"]
                         )
-                        or textval(
-                            first(
-                                detail,
-                                "venue",
-                                "ground",
-                                "venueName"
-                            )
-                        )
-                        or "Venue not available"
                     )
 
-                    items.append({
-                        "id": mid,
-                        "grade": match["_grade"],
-                        "fixture": match_label(
-                            match
-                        ),
-                        "date": str(
-                            match_date(match)
-                        ),
-                        "venue": venue,
-                        "players": players
-                    })
+                    row["venue"] = (
+                        row["venue"]
+                        or fixture_venue(
+                            detail
+                        )
+                    )
 
                 except Exception as error:
-                    items.append({
-                        "id": mid,
-                        "grade": match["_grade"],
-                        "fixture": match_label(
-                            match
-                        ),
-                        "date": str(
-                            match_date(match)
-                        ),
-                        "venue": (
-                            "Venue not available"
-                        ),
-                        "players": [],
-                        "error": str(error)
-                    })
+                    row["error"] = str(error)
 
-        st.session_state.selection_items = items
+                rows.append(row)
 
-    if st.session_state.get(
-        "selection_items"
-    ):
-        edited = []
+        st.session_state.selection_rows = rows
 
-        for item in st.session_state.selection_items:
+    if st.session_state.selection_rows:
+        edited_rows = []
+
+        for row in st.session_state.selection_rows:
             with st.container(
                 border=True
             ):
                 st.markdown(
-                    f"**{item['grade']} — "
-                    f"{item['fixture']}**"
+                    f"**{row['grade']} — "
+                    f"{row['name']}**"
                 )
 
                 st.caption(
-                    f"{item['date']} · "
-                    f"{item['venue']}"
+                    " · ".join(
+                        value
+                        for value in (
+                            row["date"],
+                            row["venue"]
+                        )
+                        if value
+                    )
                 )
 
-                if item.get("error"):
+                if row["error"]:
                     st.warning(
-                        "Could not retrieve match: "
-                        + item["error"]
+                        "Could not read selection: "
+                        + row["error"]
                     )
 
-                elif not item["players"]:
+                elif not row["players"]:
                     st.warning(
-                        "No published HBCC selection "
-                        "found in the supported API "
-                        "fields. Check the PlayCricket "
-                        "page and enter players manually "
-                        "if required."
+                        "No published HBCC players "
+                        "found in the supported "
+                        "API fields. Check the "
+                        "match page; you can "
+                        "enter names below."
                     )
 
-                raw = st.text_area(
-                    "Selected players "
-                    "(one per line)",
+                player_text = st.text_area(
+                    "Players (one per line)",
                     value="\n".join(
-                        item["players"]
+                        row["players"]
                     ),
-                    height=150,
-                    key="players_" + item["id"]
+                    height=180,
+                    key="players_" + row["id"]
                 )
 
-                copy = dict(item)
+                edited = dict(row)
 
-                copy["players"] = [
-                    player.strip()
-                    for player in raw.splitlines()
-                    if player.strip()
+                edited["players"] = [
+                    line.strip()
+                    for line in player_text.splitlines()
+                    if line.strip()
                 ]
 
-                edited.append(copy)
+                edited_rows.append(
+                    edited
+                )
 
                 st.markdown(
                     f"[Verify on PlayCricket]"
-                    f"({fixture_url(item['id'])})"
+                    f"({row['url']})"
                 )
 
-        output = selection_text(
-            edited
+        output = formatted_selections(
+            edited_rows
         )
 
-        st.markdown(
-            "### Combined team announcement"
+        st.subheader(
+            "Combined team announcement"
         )
 
         st.text_area(
-            "Copy-ready team selections",
-            value=output,
-            height=350
+            "Copy-ready selections",
+            output,
+            height=340
         )
 
         st.download_button(
-            "Download selections (.txt)",
+            "Download selections",
             output,
             file_name=(
                 "hbcc_team_selections.txt"
@@ -1652,22 +1851,20 @@ else:
         )
 
         st.caption(
-            "Published team lists may be "
-            "incomplete or change before play. "
-            "Review every grade before sharing."
+            "Teams may be partially published "
+            "or change before play. "
+            "Verify the final lists."
         )
 
 
-# =========================================================
+# =====================================================
 # FOOTER
-# =========================================================
+# =====================================================
 
-st.markdown(
-    '<div class="hbfoot">'
-    'HBCC CONTENT STUDIO · '
-    'Match reports, weekend reports and '
-    'team selections · '
-    'Verify all outputs before publishing.'
-    '</div>',
-    unsafe_allow_html=True
+st.markdown("---")
+
+st.caption(
+    "HBCC Content Studio · "
+    "Verify all generated content "
+    "against PlayCricket before publishing."
 )
