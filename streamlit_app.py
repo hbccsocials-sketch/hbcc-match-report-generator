@@ -28,11 +28,19 @@ HEADERS = {
     "Accept": "application/json"
 }
 
+
 GRADES = {
+    # WOMEN'S TEAMS
     "Women's 1st XI": (
         "9b70ae63-142e-492b-b266-f42590204e93",
         "121436ac-b8db-40c5-9fdc-2bac4439419a"
     ),
+    "Women's 2nd XI": (
+        "71054210-a0e9-46ef-aa44-44c5b7bdff97",
+        "9fc4af1a-c13a-4f23-9a0e-8cf10915843d"
+    ),
+
+    # MEN'S SATURDAY TEAMS
     "Men's 1st XI": (
         "f5b98728-e7b2-40e6-af73-ac2eae56cedf",
         "94ced5f2-a9f0-4ab3-b8aa-c3d0a643deab"
@@ -40,6 +48,48 @@ GRADES = {
     "Men's 2nd XI": (
         "d67df9f0-a982-461f-b0ee-4aa6bd89b6a6",
         "74392aeb-a39d-4f11-9d34-8bff6ca4690d"
+    ),
+    "Men's 3rd XI": (
+        "5e75167c-a2b6-49e4-8e3e-ee308a415204",
+        "5bd6f18c-b7f5-4153-8698-17ef26a87800"
+    ),
+    "Men's 4th XI": (
+        "08850a6a-6343-4518-bf55-1cf23123382f",
+        "7aaa499c-8f46-4289-86b4-9cced14d5989"
+    ),
+    "Men's 5th XI": (
+        "491395bf-4a1b-498b-8e20-49bdd9fc112f",
+        "16e6e08f-1b80-4a18-9e70-186a0ae0893f"
+    ),
+    "Men's 6th XI": (
+        "576cc3b9-8a3b-4fe2-8e8e-e70a1aee0708",
+        "8dd03070-4aa5-4ed9-9122-177a4fc5816a"
+    ),
+
+    # VETERANS TEAMS
+    "Men's Over 40s 1st XI": (
+        "30f3da7c-1e66-41ea-9ae1-9fe5691eecc1",
+        "25587b62-d7c6-4916-a2ed-6b42fed0434a"
+    ),
+    "Men's Over 50s 1st XI": (
+        "9a0cd4bf-0ad5-4a15-acd3-e7d781c6e76a",
+        "1b9fb198-ddc4-4117-a183-3bee9fae7d94"
+    ),
+
+    # SUNDAY TEAMS
+    "Men's Sunday 1st XI": (
+        "b5df35ef-35b6-41c0-b736-40c51839acdb",
+        "2ba73357-c3fd-41af-a9df-6648e8d7112b"
+    ),
+    "Men's Sunday 2nd XI": (
+        "4a84a74b-f201-481a-93a9-cc61dd14cad0",
+        "018cab89-ff43-4cac-8d1a-c96ee5579b39"
+    ),
+
+    # ALL ABILITIES
+    "All Abilities Mixed XI": (
+        "6014df30-7eac-46c9-8516-236426a1187e",
+        "b4fcbc4a-ca5e-4864-9fd6-2cbd95c791fd"
     )
 }
 
@@ -1325,6 +1375,7 @@ with right:
             "All Grades",
             "Men's Teams",
             "Women's Teams",
+            "All Abilities",
             "Custom"
         ],
         horizontal=True
@@ -1349,6 +1400,13 @@ with right:
         ]
 
     else:
+        elif grade_choice == "All Abilities":
+    selected_grades = [
+        grade
+        for grade in all_grades
+        if "all abilities" in grade.lower()
+    ],
+        
         selected_grades = st.multiselect(
             "Choose individual grades",
             list(all_grades),
