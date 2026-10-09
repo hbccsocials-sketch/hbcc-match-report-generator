@@ -109,7 +109,7 @@ st.markdown(
 
 .hbcc-hero {
     background: linear-gradient(115deg, #0f192d, #203a5b);
-    padding: 22px 30px 24px;
+    padding: 32px 30px 24px;
     border-radius: 15px;
     border-bottom: 4px solid #c8102e;
     margin-bottom: 18px;
