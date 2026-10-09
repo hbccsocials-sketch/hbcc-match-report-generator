@@ -109,22 +109,27 @@ st.markdown(
 
 .hbcc-hero {
     background: linear-gradient(115deg, #0f192d, #203a5b);
-    padding: 23px 30px;
+    padding: 22px 30px 24px;
     border-radius: 15px;
     border-bottom: 4px solid #c8102e;
     margin-bottom: 18px;
 }
 
 .hbcc-hero h1 {
-    font-size: 2rem;
-    margin: 5px 0;
+      font-size: 30px;
+    font-weight: 750;
+    line-height: 1.15;
+    margin: 0 0 6px 0 !important;
+    padding: 0 !important;
     color: white !important;
 }
 
 .hbcc-hero p {
     color: #d3dce9;
-    margin: 0;
-    font-size: 14px;
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 .hbcc-eyebrow {
@@ -132,6 +137,8 @@ st.markdown(
     font-weight: 800;
     font-size: 11px;
     letter-spacing: 1.5px;
+    line-height: 1.2;
+    margin: 0 0 8px 0;
 }
 
 .hbcc-step {
