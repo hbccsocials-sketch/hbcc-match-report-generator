@@ -1207,7 +1207,13 @@ if st.button(
                 fixtures = find_match_objects(
                     payload
                 )
+st.write("Grade being checked:", grade)
+st.write("API response type:", type(payload).__name__)
+st.write("Matches identified:", len(fixtures))
 
+with st.expander("View PlayCricket API response"):
+    st.json(payload)
+    
                 if not fixtures:
                     errors.append(
                         f"{grade}: no recognisable "
