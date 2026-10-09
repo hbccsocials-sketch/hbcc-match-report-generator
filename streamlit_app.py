@@ -11,7 +11,7 @@ from google.genai import types
 
 
 # ============================================================
-# HBCC CONTENT STUDIO
+# HBCC CONTENT STUDIO — CLUB BRANDED VERSION
 # ============================================================
 
 st.set_page_config(
@@ -22,15 +22,12 @@ st.set_page_config(
 )
 
 BASE = "https://grassrootsapiproxy.cricket.com.au/scores"
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json"
 }
 
-
 GRADES = {
-    # WOMEN'S TEAMS
     "Women's 1st XI": (
         "9b70ae63-142e-492b-b266-f42590204e93",
         "121436ac-b8db-40c5-9fdc-2bac4439419a"
@@ -39,8 +36,6 @@ GRADES = {
         "71054210-a0e9-46ef-aa44-44c5b7bdff97",
         "9fc4af1a-c13a-4f23-9a0e-8cf10915843d"
     ),
-
-    # MEN'S SATURDAY TEAMS
     "Men's 1st XI": (
         "f5b98728-e7b2-40e6-af73-ac2eae56cedf",
         "94ced5f2-a9f0-4ab3-b8aa-c3d0a643deab"
@@ -65,8 +60,6 @@ GRADES = {
         "576cc3b9-8a3b-4fe2-8e8e-e70a1aee0708",
         "8dd03070-4aa5-4ed9-9122-177a4fc5816a"
     ),
-
-    # VETERANS TEAMS
     "Men's Over 40s 1st XI": (
         "30f3da7c-1e66-41ea-9ae1-9fe5691eecc1",
         "25587b62-d7c6-4916-a2ed-6b42fed0434a"
@@ -75,8 +68,6 @@ GRADES = {
         "9a0cd4bf-0ad5-4a15-acd3-e7d781c6e76a",
         "1b9fb198-ddc4-4117-a183-3bee9fae7d94"
     ),
-
-    # SUNDAY TEAMS
     "Men's Sunday 1st XI": (
         "b5df35ef-35b6-41c0-b736-40c51839acdb",
         "2ba73357-c3fd-41af-a9df-6648e8d7112b"
@@ -85,8 +76,6 @@ GRADES = {
         "4a84a74b-f201-481a-93a9-cc61dd14cad0",
         "018cab89-ff43-4cac-8d1a-c96ee5579b39"
     ),
-
-    # ALL ABILITIES
     "All Abilities Mixed XI": (
         "6014df30-7eac-46c9-8516-236426a1187e",
         "b4fcbc4a-ca5e-4864-9fd6-2cbd95c791fd"
@@ -100,125 +89,90 @@ UUID = re.compile(
 
 
 # ============================================================
-# CLUB BRANDING
+# STYLING
 # ============================================================
 
-st.markdown(
-    """
+st.markdown("""
 <style>
 .stApp {
     background: #f5f7fa;
     color: #18263a;
 }
-
 .block-container {
-    max-width: 1230px;
-    padding-top: 1.4rem;
+    max-width: 1200px;
+    padding-top: 1.2rem;
     padding-bottom: 3rem;
 }
-
 .hbcc-hero {
-    background: linear-gradient(115deg, #0f192d, #203a5b);
-    padding: 32px 36px;
-    border-radius: 18px;
-    border-bottom: 5px solid #c8102e;
-    margin-bottom: 23px;
+    background: linear-gradient(115deg,#0f192d,#203a5b);
+    padding: 23px 30px;
+    border-radius: 15px;
+    border-bottom: 4px solid #c8102e;
+    margin-bottom: 18px;
 }
-
-.hbcc-eyebrow {
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 1.8px;
-    color: #f5b82e;
-}
-
 .hbcc-hero h1 {
-    font-size: 2.45rem;
-    margin: 8px 0 10px;
+    font-size: 2rem;
+    margin: 5px 0;
     color: white !important;
 }
-
 .hbcc-hero p {
     color: #d3dce9;
     margin: 0;
+    font-size: 14px;
 }
-
-.hbcc-steps {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 22px;
+.hbcc-eyebrow {
+    color: #f5b82e;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 1.5px;
 }
-
 .hbcc-step {
+    padding: 10px 15px;
+    border-radius: 10px;
     background: white;
     border: 1px solid #e0e6ee;
-    border-radius: 12px;
-    padding: 12px 16px;
     font-size: 13px;
-    color: #40516b;
-    flex: 1;
-    min-width: 165px;
+    text-align: center;
 }
-
-.hbcc-step strong {
-    color: #c8102e;
-    margin-right: 8px;
+.hbcc-step.active {
+    background: #0f192d;
+    color: white;
+    border-color: #0f192d;
 }
-
 .hbcc-section {
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 1.4px;
     color: #c8102e;
-    margin: 14px 0;
+    font-weight: 800;
+    letter-spacing: 1px;
+    font-size: 12px;
+    margin: 10px 0;
 }
-
-.stButton > button[kind="primary"] {
+.stButton>button[kind="primary"] {
     background: #c8102e;
     border-color: #c8102e;
     color: white;
-    font-weight: 700;
     border-radius: 10px;
+    font-weight: 700;
 }
-
-.stButton > button[kind="primary"]:hover {
+.stButton>button[kind="primary"]:hover {
     background: #a30e27;
     border-color: #a30e27;
 }
-
-.stDownloadButton > button {
+.stDownloadButton>button {
     border: 1px solid #0f192d;
-    color: #0f192d;
     border-radius: 10px;
-    font-weight: 650;
 }
-
 div[data-testid="stMetric"] {
     background: white;
     border: 1px solid #e4e8ef;
-    padding: 13px;
+    padding: 12px;
     border-radius: 12px;
 }
 </style>
-""",
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    '<div class="hbcc-hero">'
-    '<div class="hbcc-eyebrow">'
-    'HAWTHORN BOROONDARA CRICKET CLUB'
-    '</div>'
-    '<h1>Content Studio</h1>'
-    '<p>From PlayCricket to publish-ready club content.</p>'
-    '</div>',
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
 
 # ============================================================
-# GENERAL HELPERS
+# PLAYCRICKET HELPERS
 # ============================================================
 
 def name_of(value):
@@ -226,30 +180,19 @@ def name_of(value):
         return value.strip()
 
     if isinstance(value, dict):
-        keys = (
-            "displayName",
-            "fullName",
-            "name",
-            "playerName",
-            "participantName",
-            "teamName",
-            "shortName",
-            "playerShortName",
-            "title"
-        )
-
-        for key in keys:
+        for key in (
+            "displayName", "fullName", "name",
+            "playerName", "participantName",
+            "teamName", "shortName",
+            "playerShortName", "title"
+        ):
             result = value.get(key)
-
             if isinstance(result, str) and result.strip():
                 return result.strip()
 
         for key in ("player", "participant", "team", "person"):
-            nested = value.get(key)
-
-            if isinstance(nested, dict):
-                result = name_of(nested)
-
+            if isinstance(value.get(key), dict):
+                result = name_of(value[key])
                 if result:
                     return result
 
@@ -257,30 +200,21 @@ def name_of(value):
 
 
 def parse_date(value):
-    """
-    Read fixture dates from PlayCricket matchSchedule.
-    Supports nested dictionaries, lists and timestamps.
-    """
-
     if value is None or isinstance(value, bool):
         return None
 
     if isinstance(value, (int, float)):
         if value < 100000000:
             return None
-
         try:
             timestamp = (
                 value / 1000
                 if value > 100000000000
                 else value
             )
-
             return datetime.fromtimestamp(
-                timestamp,
-                tz=timezone.utc
+                timestamp, tz=timezone.utc
             ).date()
-
         except (ValueError, OSError, OverflowError):
             return None
 
@@ -289,24 +223,18 @@ def parse_date(value):
             r"(?<!\d)(20\d{2})[-/](\d{1,2})[-/](\d{1,2})(?!\d)",
             value
         )
-
         if match:
             try:
-                return date(
-                    *(int(x) for x in match.groups())
-                )
+                return date(*(int(x) for x in match.groups()))
             except ValueError:
                 pass
-
         return None
 
     if isinstance(value, list):
         for item in value:
             result = parse_date(item)
-
             if result:
                 return result
-
         return None
 
     if isinstance(value, dict):
@@ -316,47 +244,30 @@ def parse_date(value):
         ):
             if all(part in value for part in parts):
                 try:
-                    return date(
-                        *(int(value[p]) for p in parts)
-                    )
-                except (TypeError, ValueError):
+                    return date(*(int(value[p]) for p in parts))
+                except (ValueError, TypeError):
                     pass
 
         priority = (
-            "matchSchedule",
-            "startDateTime",
-            "startDate",
-            "matchDate",
-            "date",
-            "scheduledStart",
-            "scheduledDate",
-            "startTime",
-            "start",
-            "matchStartDate",
-            "matchStartDateTime",
-            "days",
-            "dates",
-            "firstDay",
-            "dateTime",
-            "utcStartTime",
-            "localStartTime",
-            "startDateTimeLocal"
+            "matchSchedule", "startDateTime",
+            "startDate", "matchDate", "date",
+            "scheduledStart", "scheduledDate",
+            "startTime", "start",
+            "matchStartDate", "matchStartDateTime",
+            "days", "dates", "firstDay",
+            "dateTime", "utcStartTime",
+            "localStartTime", "startDateTimeLocal"
         )
 
         for key in priority:
             if key in value:
                 result = parse_date(value[key])
-
                 if result:
                     return result
 
         for item in value.values():
-            if isinstance(
-                item,
-                (str, int, float, dict, list)
-            ):
+            if isinstance(item, (str, int, float, dict, list)):
                 result = parse_date(item)
-
                 if result:
                     return result
 
@@ -364,15 +275,11 @@ def parse_date(value):
 
 
 def match_id(obj):
-    if not isinstance(obj, dict):
-        return None
-
-    for key in ("id", "matchId", "matchID"):
-        value = obj.get(key)
-
-        if isinstance(value, str) and UUID.fullmatch(value):
-            return value
-
+    if isinstance(obj, dict):
+        for key in ("id", "matchId", "matchID"):
+            value = obj.get(key)
+            if isinstance(value, str) and UUID.fullmatch(value):
+                return value
     return None
 
 
@@ -381,13 +288,10 @@ def teams_of(obj):
         return []
 
     for key in ("teams", "teamSummaries"):
-        value = obj.get(key)
-
-        if isinstance(value, list):
+        if isinstance(obj.get(key), list):
             return [
-                team
-                for team in value
-                if isinstance(team, dict)
+                x for x in obj[key]
+                if isinstance(x, dict)
             ]
 
     return [
@@ -401,7 +305,7 @@ def hbcc_team(obj, expected_id):
     if not isinstance(obj, dict):
         return False
 
-    identifiers = [
+    ids = [
         str(obj.get(key) or "")
         for key in ("id", "teamId", "clubTeamId")
     ]
@@ -409,7 +313,7 @@ def hbcc_team(obj, expected_id):
     name = name_of(obj).lower()
 
     return (
-        (bool(expected_id) and expected_id in identifiers)
+        (bool(expected_id) and expected_id in ids)
         or "hawthorn boroondara" in name
         or name == "hb hawks"
     )
@@ -420,8 +324,7 @@ def fixture_name(obj):
         name_of(team)
         for team in teams_of(obj)
     ]
-
-    names = [name for name in names if name]
+    names = [x for x in names if x]
 
     if len(names) >= 2:
         return " vs ".join(names[:2])
@@ -430,26 +333,16 @@ def fixture_name(obj):
 
 
 def venue_of(obj):
-    if not isinstance(obj, dict):
-        return ""
-
-    for key in (
-        "venue",
-        "ground",
-        "venueName",
-        "groundName"
-    ):
-        value = obj.get(key)
-
-        if value:
-            return name_of(value) or str(value)
-
+    if isinstance(obj, dict):
+        for key in (
+            "venue", "ground",
+            "venueName", "groundName"
+        ):
+            value = obj.get(key)
+            if value:
+                return name_of(value) or str(value)
     return ""
 
-
-# ============================================================
-# PLAYCRICKET API
-# ============================================================
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch(url):
@@ -458,9 +351,7 @@ def fetch(url):
         headers=HEADERS,
         timeout=30
     )
-
     response.raise_for_status()
-
     return response.json()
 
 
@@ -496,9 +387,8 @@ def collect_matches(payload):
         and isinstance(payload.get("matches"), list)
     ):
         return [
-            match
-            for match in payload["matches"]
-            if isinstance(match, dict)
+            x for x in payload["matches"]
+            if isinstance(x, dict)
         ]
 
     found = {}
@@ -506,26 +396,21 @@ def collect_matches(payload):
     def walk(value):
         if isinstance(value, dict):
             mid = match_id(value)
-
             if mid:
                 found[mid] = value
-
             for child in value.values():
                 if isinstance(child, (dict, list)):
                     walk(child)
-
         elif isinstance(value, list):
             for child in value:
                 walk(child)
 
     walk(payload)
-
     return list(found.values())
 
 
 def fixture_from(record, grade, team_id, detail=None):
     summary = (detail or {}).get("matchSummary") or {}
-
     if not isinstance(summary, dict):
         summary = {}
 
@@ -536,7 +421,6 @@ def fixture_from(record, grade, team_id, detail=None):
     )
 
     label = fixture_name(record)
-
     if label == "Fixture":
         label = fixture_name(summary)
 
@@ -559,20 +443,19 @@ def fixture_from(record, grade, team_id, detail=None):
 
 
 def manual_ids(text):
-    identifiers = []
+    ids = []
 
     for token in re.split(r"[\s,]+", text):
         found = re.search(
             r"/match/([0-9a-fA-F-]{36})",
             token
         )
-
         mid = found.group(1) if found else token
 
-        if UUID.fullmatch(mid) and mid not in identifiers:
-            identifiers.append(mid)
+        if UUID.fullmatch(mid) and mid not in ids:
+            ids.append(mid)
 
-    return identifiers
+    return ids
 
 
 # ============================================================
@@ -580,22 +463,10 @@ def manual_ids(text):
 # ============================================================
 
 SELECTION_KEYS = (
-    "selectedPlayers",
-    "teamSelection",
-    "teamSelections",
-    "lineup",
-    "lineUp",
-    "playingXI",
-    "players",
-    "participants",
-    "selectedParticipants",
-    "squad"
-)
-
-PLAYER_ID_KEYS = (
-    "playerId",
-    "participantId",
-    "id"
+    "selectedPlayers", "teamSelection",
+    "teamSelections", "lineup", "lineUp",
+    "playingXI", "players", "participants",
+    "selectedParticipants", "squad"
 )
 
 
@@ -604,22 +475,17 @@ def captain_flag(item):
         return False
 
     for key in (
-        "isCaptain",
-        "captain",
-        "teamCaptain",
-        "isTeamCaptain"
+        "isCaptain", "captain",
+        "teamCaptain", "isTeamCaptain"
     ):
         if item.get(key) is True:
             return True
 
     for key in (
-        "role",
-        "teamRole",
-        "playerRole",
-        "designation"
+        "role", "teamRole",
+        "playerRole", "designation"
     ):
         role = item.get(key)
-
         if isinstance(role, dict):
             role = name_of(role)
 
@@ -637,33 +503,24 @@ def captain_references(team):
     refs = set()
 
     for key in (
-        "captainId",
-        "captainPlayerId",
+        "captainId", "captainPlayerId",
         "captainParticipantId",
-        "teamCaptainId",
-        "captainName"
+        "teamCaptainId", "captainName"
     ):
         if team.get(key):
-            refs.add(
-                str(team[key]).strip().lower()
-            )
+            refs.add(str(team[key]).strip().lower())
 
     captain = team.get("captain")
 
     if isinstance(captain, dict):
         for key in (
-            "id",
-            "playerId",
-            "participantId",
-            "displayName",
-            "name"
+            "id", "playerId",
+            "participantId", "displayName", "name"
         ):
             if captain.get(key):
-                refs.add(
-                    str(captain[key]).strip().lower()
-                )
+                refs.add(str(captain[key]).strip().lower())
 
-    elif isinstance(captain, str) and captain.strip():
+    elif isinstance(captain, str):
         refs.add(captain.strip().lower())
 
     return refs
@@ -679,45 +536,37 @@ def parse_player_list(items, team):
     if not isinstance(items, list):
         return []
 
-    captain_refs = captain_references(team)
-
+    refs = captain_references(team)
     players = []
     seen = set()
 
     for item in items:
         name = name_of(item)
 
-        if (
-            not name
-            or "*" in name
-            or name.lower() == "private player"
-        ):
+        if not name or "*" in name:
             continue
 
-        clean_name = re.sub(
-            r"\s*\(c\)\s*$",
-            "",
-            name,
-            flags=re.I
+        if name.lower() == "private player":
+            continue
+
+        clean = re.sub(
+            r"\s*\(c\)\s*$", "",
+            name, flags=re.I
         ).strip()
 
-        player_refs = {
-            name.lower(),
-            clean_name.lower()
-        }
+        player_refs = {name.lower(), clean.lower()}
 
         if isinstance(item, dict):
-            for key in PLAYER_ID_KEYS:
+            for key in ("id", "playerId", "participantId"):
                 if item.get(key):
-                    player_refs.add(
-                        str(item[key]).lower()
-                    )
+                    player_refs.add(str(item[key]).lower())
 
             for nested_key in ("player", "participant"):
                 nested = item.get(nested_key)
-
                 if isinstance(nested, dict):
-                    for key in PLAYER_ID_KEYS:
+                    for key in (
+                        "id", "playerId", "participantId"
+                    ):
                         if nested.get(key):
                             player_refs.add(
                                 str(nested[key]).lower()
@@ -725,17 +574,16 @@ def parse_player_list(items, team):
 
         is_captain = (
             captain_flag(item)
-            or bool(player_refs & captain_refs)
-            or bool(re.search(r"\(c\)", name, re.I))
+            or bool(player_refs & refs)
+            or "(c)" in name.lower()
         )
 
-        if clean_name.lower() in seen:
+        if clean.lower() in seen:
             continue
 
-        seen.add(clean_name.lower())
-
+        seen.add(clean.lower())
         players.append(
-            clean_name + (" (c)" if is_captain else "")
+            clean + (" (c)" if is_captain else "")
         )
 
     return players
@@ -746,12 +594,8 @@ def selection_candidates(detail, expected_id):
     seen = set()
 
     skip = {
-        "scorecard",
-        "batting",
-        "bowling",
-        "innings",
-        "balls",
-        "deliveries",
+        "scorecard", "batting", "bowling",
+        "innings", "balls", "deliveries",
         "scorecards"
     }
 
@@ -764,8 +608,7 @@ def selection_candidates(detail, expected_id):
                 continue
 
             players = parse_player_list(
-                team[key],
-                team
+                team[key], team
             )
 
             if not players:
@@ -780,17 +623,14 @@ def selection_candidates(detail, expected_id):
             seen.add(signature)
 
             explicit = key not in (
-                "players",
-                "participants",
-                "squad"
+                "players", "participants", "squad"
             )
 
             score = (
                 (100 if explicit else 50)
                 + len(players)
                 + (
-                    15
-                    if any("(c)" in p for p in players)
+                    15 if any("(c)" in p for p in players)
                     else 0
                 )
             )
@@ -813,7 +653,6 @@ def selection_candidates(detail, expected_id):
             for key, value in obj.items():
                 if key in skip:
                     continue
-
                 if isinstance(value, (dict, list)):
                     walk(
                         value,
@@ -822,11 +661,11 @@ def selection_candidates(detail, expected_id):
                     )
 
         elif isinstance(obj, list):
-            for index, value in enumerate(obj):
+            for i, value in enumerate(obj):
                 if isinstance(value, (dict, list)):
                     walk(
                         value,
-                        f"{path}[{index}]",
+                        f"{path}[{i}]",
                         depth + 1
                     )
 
@@ -834,10 +673,7 @@ def selection_candidates(detail, expected_id):
 
     return sorted(
         candidates,
-        key=lambda item: (
-            item["score"],
-            len(item["players"])
-        ),
+        key=lambda x: (x["score"], len(x["players"])),
         reverse=True
     )
 
@@ -860,16 +696,13 @@ def selection_output(rows):
 
         if row["players"]:
             lines.extend(
-                f"{index}. {name}"
-                for index, name in enumerate(
-                    row["players"],
-                    1
+                f"{i}. {player}"
+                for i, player in enumerate(
+                    row["players"], 1
                 )
             )
         else:
-            lines.append(
-                "Selected team coming soon"
-            )
+            lines.append("Selected team coming soon")
 
         lines.append("")
 
@@ -877,7 +710,7 @@ def selection_output(rows):
 
 
 # ============================================================
-# MATCH REPORT DATA
+# REPORT GENERATION
 # ============================================================
 
 def innings_summary(detail):
@@ -910,7 +743,9 @@ def innings_summary(detail):
                             "name": name,
                             "runs": player.get("runsScored"),
                             "balls": player.get("ballsFaced"),
-                            "dismissal": player.get("dismissalText")
+                            "dismissal": player.get(
+                                "dismissalText"
+                            )
                         })
 
                 for player in bowling:
@@ -926,9 +761,15 @@ def innings_summary(detail):
                     if name and "*" not in name:
                         bowlers.append({
                             "name": name,
-                            "wickets": player.get("wicketsTaken"),
-                            "runs": player.get("runsConceded"),
-                            "overs": player.get("oversBowled")
+                            "wickets": player.get(
+                                "wicketsTaken"
+                            ),
+                            "runs": player.get(
+                                "runsConceded"
+                            ),
+                            "overs": player.get(
+                                "oversBowled"
+                            )
                         })
 
                 output.append({
@@ -939,7 +780,6 @@ def innings_summary(detail):
                     "batting": batters,
                     "bowling": bowlers
                 })
-
                 return
 
             for child in value.values():
@@ -950,7 +790,6 @@ def innings_summary(detail):
                 walk(child)
 
     walk(detail)
-
     return output
 
 
@@ -960,8 +799,7 @@ def ball_highlights(data):
     def walk(value):
         if isinstance(value, dict):
             required = {
-                "overNumber",
-                "ballNumber",
+                "overNumber", "ballNumber",
                 "progressRuns"
             }
 
@@ -979,7 +817,9 @@ def ball_highlights(data):
                         ),
                         "runsBat": value.get("runsBat"),
                         "wicket": bool(
-                            value.get("dismissedParticipantId")
+                            value.get(
+                                "dismissedParticipantId"
+                            )
                         ),
                         "batter": value.get(
                             "strikerShortName"
@@ -988,7 +828,6 @@ def ball_highlights(data):
                             "bowlerShortName"
                         )
                     })
-
                 return
 
             for child in value.values():
@@ -999,13 +838,11 @@ def ball_highlights(data):
                 walk(child)
 
     walk(data)
-
     return events[:100]
 
 
 def report_data(fixture):
     detail = match_detail(fixture["id"])
-
     summary = detail.get("matchSummary") or {}
 
     if not isinstance(summary, dict):
@@ -1032,11 +869,7 @@ def report_data(fixture):
 
 
 def generate_article(
-    fixtures,
-    mode,
-    target,
-    context,
-    avoid
+    fixtures, mode, target, context, avoid
 ):
     key = st.secrets.get("GEMINI_API_KEY", "")
 
@@ -1054,26 +887,25 @@ def generate_article(
 
     prompt = f"""
 You are the cricket reporter for Hawthorn Boroondara
-Cricket Club (HB Hawks).
+Cricket Club, also known as HB Hawks.
 
 Write a complete {mode.lower()} of approximately
 {target} words in Australian English.
 
-Start with a compelling headline.
+Begin with a compelling headline.
 
-Use verified scores, batting, bowling and
-ball-by-ball moments to tell the match story.
+Use the verified scorecard data and significant
+ball-by-ball moments to tell the story.
 
-For a weekend report:
+For a Weekend Report:
 - Cover every supplied fixture.
 - Include sections for each grade.
-- Write a cohesive club-wide narrative.
+- Create a cohesive club-wide narrative.
 
-Use only supplied facts.
-
-Never invent results, partnerships, quotes,
-weather, pitch conditions, tactics,
-player identities or injuries.
+Only use supplied facts.
+Never invent results, statistics, quotes,
+partnerships, pitch conditions, weather,
+tactics, player identities or injuries.
 
 Treat official result text as authoritative.
 Never infer a result from an unfinished match.
@@ -1087,7 +919,7 @@ Things to avoid:
 Match data:
 {json.dumps(data, ensure_ascii=False, default=str)}
 
-Return only the finished article.
+Return only the complete finished article.
 """
 
     last_error = None
@@ -1117,9 +949,7 @@ Return only the finished article.
                 if any(
                     term in message
                     for term in (
-                        "429",
-                        "503",
-                        "unavailable",
+                        "429", "503", "unavailable",
                         "resource_exhausted"
                     )
                 ):
@@ -1143,15 +973,28 @@ Return only the finished article.
 # SESSION STATE
 # ============================================================
 
-for key, default in (
-    ("fixtures", []),
-    ("diagnostics", []),
-    ("schedule_samples", []),
-    ("article", ""),
-    ("selection_rows", [])
-):
+defaults = {
+    "workflow": "setup",
+    "content_mode": "Weekend Report",
+    "fixtures": [],
+    "selected_fixture_ids": [],
+    "diagnostics": [],
+    "schedule_samples": [],
+    "article": "",
+    "selection_rows": []
+}
+
+for key, value in defaults.items():
     if key not in st.session_state:
-        st.session_state[key] = default
+        st.session_state[key] = value
+
+
+def reset_results():
+    st.session_state.workflow = "setup"
+    st.session_state.fixtures = []
+    st.session_state.selected_fixture_ids = []
+    st.session_state.selection_rows = []
+    st.session_state.article = ""
 
 
 # ============================================================
@@ -1159,22 +1002,23 @@ for key, default in (
 # ============================================================
 
 with st.sidebar:
-    st.markdown("### ⚙️ Advanced settings")
-
-    st.caption(
-        "Use these settings to add grades or "
-        "troubleshoot PlayCricket."
-    )
+    st.header("⚙️ Advanced settings")
 
     additional = st.text_area(
         "Additional grades",
-        placeholder="Men's 3rd XI | GRADE_ID | TEAM_ID",
-        height=110
+        placeholder="Grade name | GRADE_ID | TEAM_ID",
+        height=100
     )
 
     st.caption(
-        "One grade per line: "
-        "Grade name | Grade ID | Team ID"
+        "One grade per line. "
+        "Your 13 senior teams are already configured."
+    )
+
+    manual_urls = st.text_area(
+        "Manual PlayCricket match links",
+        placeholder="https://play.cricket.com.au/match/...",
+        height=100
     )
 
     if st.button("Clear PlayCricket cache"):
@@ -1185,10 +1029,7 @@ with st.sidebar:
 all_grades = dict(GRADES)
 
 for line in additional.splitlines():
-    parts = [
-        part.strip()
-        for part in line.split("|")
-    ]
+    parts = [x.strip() for x in line.split("|")]
 
     if (
         len(parts) == 3
@@ -1196,914 +1037,952 @@ for line in additional.splitlines():
         and UUID.fullmatch(parts[2])
     ):
         all_grades[parts[0]] = (
-            parts[1],
-            parts[2]
+            parts[1], parts[2]
         )
 
 
 # ============================================================
-# STEP 1 — CHOOSE CONTENT
+# HEADER AND PROGRESS
 # ============================================================
 
 st.markdown(
-    '<div class="hbcc-steps">'
-    '<div class="hbcc-step"><strong>01</strong> Choose content</div>'
-    '<div class="hbcc-step"><strong>02</strong> Find & review matches</div>'
-    '<div class="hbcc-step"><strong>03</strong> Create & export</div>'
+    '<div class="hbcc-hero">'
+    '<div class="hbcc-eyebrow">'
+    'HAWTHORN BOROONDARA CRICKET CLUB'
+    '</div>'
+    '<h1>Content Studio</h1>'
+    '<p>Create. Review. Publish.</p>'
     '</div>',
     unsafe_allow_html=True
 )
 
-st.markdown(
-    '<div class="hbcc-section">'
-    'STEP 01 · CHOOSE YOUR CONTENT'
-    '</div>',
-    unsafe_allow_html=True
-)
+stage = st.session_state.workflow
+steps = [
+    ("setup", "01 · Setup"),
+    ("review", "02 · Review Fixtures"),
+    ("export", "03 · Create & Export")
+]
 
-mode = st.radio(
-    "Content type",
-    [
+columns = st.columns(3)
+
+for column, (step_key, label) in zip(columns, steps):
+    with column:
+        active = " active" if stage == step_key else ""
+        st.markdown(
+            f'<div class="hbcc-step{active}">'
+            f'{label}</div>',
+            unsafe_allow_html=True
+        )
+
+
+# ============================================================
+# STEP 1 — SETUP
+# ============================================================
+
+if stage == "setup":
+    st.markdown("### What are you creating?")
+
+    modes = [
         "Match Report",
         "Weekend Report",
         "Team Selections"
-    ],
-    horizontal=True,
-    label_visibility="collapsed"
-)
+    ]
 
-descriptions = {
-    "Match Report": (
-        "Create an article about one match using "
-        "PlayCricket scores and match events."
-    ),
-    "Weekend Report": (
-        "Bring multiple match results together "
-        "into one club-wide weekend wrap."
-    ),
-    "Team Selections": (
-        "Retrieve published players, review captains "
-        "and prepare a combined team announcement."
-    )
-}
+    mode_icons = {
+        "Match Report": "📝",
+        "Weekend Report": "📰",
+        "Team Selections": "👥"
+    }
 
-st.caption(descriptions[mode])
+    mode_descriptions = {
+        "Match Report": "One match, one complete article",
+        "Weekend Report": "All the weekend action",
+        "Team Selections": "Published players across grades"
+    }
 
+    mode_columns = st.columns(3)
 
-# ============================================================
-# STEP 2 — FIND MATCHES
-# ============================================================
-
-st.markdown(
-    '<div class="hbcc-section">'
-    'STEP 02 · FIND & REVIEW MATCHES'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-left, right = st.columns(2)
-
-with left:
-    st.markdown("#### Match dates")
-
-    date_choice = st.radio(
-        "When are the matches?",
-        [
-            "This Weekend",
-            "Last Weekend",
-            "Choose Dates"
-        ],
-        horizontal=True
-    )
-
-    today = date.today()
-
-    # Monday=0, Saturday=5, Sunday=6
-    days_until_saturday = (5 - today.weekday()) % 7
-    this_saturday = today + timedelta(
-        days=days_until_saturday
-    )
-
-    dates = set()
-
-    if date_choice == "This Weekend":
-        dates = {
-            this_saturday,
-            this_saturday + timedelta(days=1)
-        }
-
-    elif date_choice == "Last Weekend":
-        last_saturday = (
-            this_saturday - timedelta(days=7)
-        )
-
-        dates = {
-            last_saturday,
-            last_saturday + timedelta(days=1)
-        }
-
-    else:
-        date_method = st.radio(
-            "Custom date method",
-            [
-                "Date range",
-                "Individual dates"
-            ],
-            horizontal=True
-        )
-
-        if date_method == "Date range":
-            chosen_dates = st.date_input(
-                "Match date range",
-                value=(
-                    today,
-                    today + timedelta(days=1)
+    for column, option in zip(mode_columns, modes):
+        with column:
+            with st.container(border=True):
+                st.markdown(
+                    f"### {mode_icons[option]}"
                 )
+                st.markdown(f"**{option}**")
+                st.caption(mode_descriptions[option])
+
+                selected = (
+                    st.session_state.content_mode == option
+                )
+
+                if st.button(
+                    "✓ Selected" if selected else "Choose",
+                    key="mode_" + option,
+                    type="primary" if selected else "secondary",
+                    use_container_width=True
+                ):
+                    st.session_state.content_mode = option
+                    st.rerun()
+
+    mode = st.session_state.content_mode
+
+    st.divider()
+
+    left, right = st.columns(2, gap="large")
+
+    with left:
+        st.markdown("#### 📅 When are the matches?")
+
+        default_date = (
+            "This Weekend"
+            if mode == "Team Selections"
+            else "Last Weekend"
+        )
+
+        date_choice = st.segmented_control(
+            "Match dates",
+            [
+                "This Weekend",
+                "Last Weekend",
+                "Custom"
+            ],
+            default=default_date,
+            key="date_choice_" + mode
+        )
+
+        today = date.today()
+        days_until_saturday = (
+            5 - today.weekday()
+        ) % 7
+
+        this_saturday = today + timedelta(
+            days=days_until_saturday
+        )
+
+        dates = set()
+
+        if date_choice == "This Weekend":
+            dates = {
+                this_saturday,
+                this_saturday + timedelta(days=1)
+            }
+
+        elif date_choice == "Last Weekend":
+            saturday = this_saturday - timedelta(
+                days=7
             )
-
-            if (
-                isinstance(chosen_dates, (tuple, list))
-                and len(chosen_dates) == 2
-            ):
-                start, end = chosen_dates
-
-                if 0 <= (end - start).days <= 45:
-                    dates = {
-                        start + timedelta(days=i)
-                        for i in range(
-                            (end - start).days + 1
-                        )
-                    }
-                else:
-                    st.warning(
-                        "Choose a range of 46 days or less."
-                    )
+            dates = {
+                saturday,
+                saturday + timedelta(days=1)
+            }
 
         else:
-            count = st.number_input(
-                "Number of dates",
-                min_value=1,
-                max_value=10,
-                value=1
+            method = st.radio(
+                "Choose date method",
+                ["Date range", "Individual dates"],
+                horizontal=True
             )
 
-            for i in range(count):
-                selected_date = st.date_input(
-                    f"Date {i + 1}",
-                    value=today + timedelta(days=i),
-                    key=f"custom_date_{i}"
+            if method == "Date range":
+                selected = st.date_input(
+                    "Date range",
+                    value=(
+                        today,
+                        today + timedelta(days=1)
+                    )
                 )
 
-                dates.add(selected_date)
+                if (
+                    isinstance(selected, (tuple, list))
+                    and len(selected) == 2
+                ):
+                    start, end = selected
+                    days = (end - start).days
 
-    if dates:
-        st.caption(
-            "Searching: "
-            + ", ".join(
-                day.strftime("%d %b %Y")
-                for day in sorted(dates)
+                    if 0 <= days <= 45:
+                        dates = {
+                            start + timedelta(days=i)
+                            for i in range(days + 1)
+                        }
+                    else:
+                        st.warning(
+                            "Choose a range of 46 days or less."
+                        )
+
+            else:
+                count = st.number_input(
+                    "Number of dates",
+                    min_value=1,
+                    max_value=10,
+                    value=1
+                )
+
+                for i in range(count):
+                    dates.add(
+                        st.date_input(
+                            f"Date {i + 1}",
+                            value=today + timedelta(days=i),
+                            key=f"individual_date_{i}"
+                        )
+                    )
+
+        if dates:
+            first = min(dates)
+            last = max(dates)
+
+            st.info(
+                "📅 "
+                + first.strftime("%d %B %Y")
+                + (
+                    " – " + last.strftime("%d %B %Y")
+                    if last != first else ""
+                )
             )
+
+    with right:
+        st.markdown("#### 🏏 Which teams?")
+
+        grade_choice = st.segmented_control(
+            "Grade filter",
+            [
+                "All",
+                "Men's",
+                "Women's",
+                "All Abilities",
+                "Custom"
+            ],
+            default="All"
         )
 
+        if grade_choice == "All":
+            selected_grades = list(all_grades)
 
-with right:
-    st.markdown("#### Select grades")
+        elif grade_choice == "Men's":
+            selected_grades = [
+                grade for grade in all_grades
+                if "men's" in grade.lower()
+                and "women's" not in grade.lower()
+            ]
 
-    grade_choice = st.radio(
-        "Which teams?",
-        [
-            "All Grades",
-            "Men's Teams",
-            "Women's Teams",
-            "All Abilities",
-            "Custom"
-        ],
-        horizontal=True
-    )
+        elif grade_choice == "Women's":
+            selected_grades = [
+                grade for grade in all_grades
+                if "women's" in grade.lower()
+            ]
 
-    if grade_choice == "All Grades":
-        selected_grades = list(all_grades)
+        elif grade_choice == "All Abilities":
+            selected_grades = [
+                grade for grade in all_grades
+                if "all abilities" in grade.lower()
+            ]
 
-    elif grade_choice == "Men's Teams":
-        selected_grades = [
-            grade
-            for grade in all_grades
-            if "men's" in grade.lower()
-            and "women's" not in grade.lower()
-        ]
+        else:
+            selected_grades = st.multiselect(
+                "Select individual grades",
+                list(all_grades),
+                default=list(all_grades)
+            )
 
-    elif grade_choice == "Women's Teams":
-        selected_grades = [
-            grade
-            for grade in all_grades
-            if "women's" in grade.lower()
-        ]
-    elif grade_choice == "All Abilities":
-        selected_grades = [
-            grade
-            for grade in all_grades
-            if "all abilities" in grade.lower()
-        ]
-    else:
-        selected_grades = st.multiselect(
-            "Choose individual grades",
-            list(all_grades),
-            default=list(GRADES)
+        st.info(
+            f"🏏 {len(selected_grades)} teams selected"
         )
 
-    st.caption(
-        f"{len(selected_grades)} grade(s) selected"
-    )
+        with st.expander("View selected teams"):
+            for grade in selected_grades:
+                st.write("✓", grade)
 
-    with st.expander("View selected grades"):
-        for grade in selected_grades:
-            st.write("✓", grade)
+    st.divider()
 
+    if st.button(
+        "🔎 Find Matches →",
+        type="primary",
+        use_container_width=True,
+        disabled=not dates or not selected_grades
+    ):
+        found = {}
+        diagnostics = []
+        samples = []
 
-with st.expander(
-    "Advanced · Add match links manually"
-):
-    manual_urls = st.text_area(
-        "PlayCricket match URLs",
-        placeholder=(
-            "https://play.cricket.com.au/match/..."
-        ),
-        height=90
-    )
+        with st.spinner(
+            "Searching PlayCricket for HBCC fixtures..."
+        ):
+            for grade in selected_grades:
+                grade_id, team_id = all_grades[grade]
 
-    st.caption(
-        "Use this if a fixture cannot be found automatically."
-    )
+                try:
+                    payload = grade_matches(grade_id)
+                    records = collect_matches(payload)
 
+                    if records:
+                        samples.append({
+                            "grade": grade,
+                            "matchSchedule": records[0].get(
+                                "matchSchedule"
+                            )
+                        })
 
-# ============================================================
-# SEARCH FIXTURES
-# ============================================================
-
-search_clicked = st.button(
-    "🔎 Find HBCC Matches",
-    type="primary",
-    use_container_width=True,
-    disabled=not dates or not selected_grades
-)
-
-if search_clicked:
-    found = {}
-    diagnostics = []
-    samples = []
-
-    with st.spinner("Searching PlayCricket fixtures..."):
-        for grade in selected_grades:
-            grade_id, team_id = all_grades[grade]
-
-            try:
-                payload = grade_matches(grade_id)
-                records = collect_matches(payload)
-
-                if records:
-                    samples.append({
+                    stats = {
                         "grade": grade,
-                        "match_id": records[0].get("id"),
-                        "matchSchedule": records[0].get(
-                            "matchSchedule"
-                        ),
-                        "parsed_date": str(
+                        "records": len(records),
+                        "without_date": 0,
+                        "outside_dates": 0,
+                        "matched": 0
+                    }
+
+                    for record in records:
+                        mid = match_id(record)
+
+                        if not mid:
+                            continue
+
+                        # Preserve matchSchedule parsing.
+                        when = (
                             parse_date(
-                                records[0].get("matchSchedule")
+                                record.get("matchSchedule")
+                            )
+                            or parse_date(record)
+                        )
+
+                        detail = None
+
+                        if not when:
+                            try:
+                                detail = match_detail(mid)
+                                when = (
+                                    parse_date(
+                                        detail.get("matchSummary")
+                                    )
+                                    or parse_date(detail)
+                                )
+                            except Exception:
+                                pass
+
+                        if not when:
+                            stats["without_date"] += 1
+                            continue
+
+                        if when not in dates:
+                            stats["outside_dates"] += 1
+                            continue
+
+                        teams = (
+                            teams_of(record)
+                            or teams_of(
+                                (detail or {}).get(
+                                    "matchSummary"
+                                )
                             )
                         )
+
+                        if teams and not any(
+                            hbcc_team(team, team_id)
+                            for team in teams
+                        ):
+                            continue
+
+                        if mid not in found:
+                            found[mid] = fixture_from(
+                                record,
+                                grade,
+                                team_id,
+                                detail
+                            )
+                            stats["matched"] += 1
+
+                    diagnostics.append(stats)
+
+                except Exception as error:
+                    diagnostics.append({
+                        "grade": grade,
+                        "error": str(error)
                     })
 
-                stats = {
-                    "grade": grade,
-                    "records_identified": len(records),
-                    "without_date": 0,
-                    "outside_dates": 0,
-                    "other_team": 0,
-                    "matched": 0
-                }
+            # Manual match links
+            for mid in manual_ids(manual_urls):
+                if mid in found:
+                    continue
 
-                for record in records:
-                    mid = match_id(record)
-
-                    if not mid:
-                        continue
-
-                    # IMPORTANT:
-                    # MatchSchedule is checked first.
-                    when = (
-                        parse_date(
-                            record.get("matchSchedule")
-                        )
-                        or parse_date(record)
+                try:
+                    detail = match_detail(mid)
+                    summary = (
+                        detail.get("matchSummary") or {}
                     )
-
-                    detail = None
-
-                    if not when:
-                        try:
-                            detail = match_detail(mid)
-
-                            when = (
-                                parse_date(
-                                    detail.get("matchSummary")
-                                )
-                                or parse_date(detail)
-                            )
-
-                        except Exception:
-                            pass
-
-                    if not when:
-                        stats["without_date"] += 1
-                        continue
-
-                    if when not in dates:
-                        stats["outside_dates"] += 1
-                        continue
-
                     teams = (
-                        teams_of(record)
-                        or teams_of(
-                            (detail or {}).get(
-                                "matchSummary"
-                            )
-                        )
+                        teams_of(summary)
+                        or teams_of(detail)
                     )
 
-                    if teams and not any(
-                        hbcc_team(team, team_id)
-                        for team in teams
-                    ):
-                        stats["other_team"] += 1
-                        continue
-
-                    if mid not in found:
-                        found[mid] = fixture_from(
-                            record,
-                            grade,
-                            team_id,
-                            detail
-                        )
-
-                        stats["matched"] += 1
-
-                diagnostics.append(stats)
-
-            except Exception as error:
-                diagnostics.append({
-                    "grade": grade,
-                    "error": str(error)
-                })
-
-        # Optional manual match links
-        for mid in manual_ids(manual_urls):
-            if mid in found:
-                continue
-
-            try:
-                detail = match_detail(mid)
-
-                summary = (
-                    detail.get("matchSummary") or {}
-                )
-
-                teams = (
-                    teams_of(summary)
-                    or teams_of(detail)
-                )
-
-                grade = next(
-                    (
-                        candidate
-                        for candidate in selected_grades
-                        if any(
-                            hbcc_team(
-                                team,
-                                all_grades[candidate][1]
+                    grade = next(
+                        (
+                            g for g in selected_grades
+                            if any(
+                                hbcc_team(
+                                    team,
+                                    all_grades[g][1]
+                                )
+                                for team in teams
                             )
-                            for team in teams
-                        )
-                    ),
-                    selected_grades[0]
-                )
+                        ),
+                        selected_grades[0]
+                    )
 
-                record = dict(summary or detail)
-                record["id"] = mid
+                    record = dict(summary or detail)
+                    record["id"] = mid
 
-                found[mid] = fixture_from(
-                    record,
-                    grade,
-                    all_grades[grade][1],
-                    detail
-                )
+                    found[mid] = fixture_from(
+                        record,
+                        grade,
+                        all_grades[grade][1],
+                        detail
+                    )
 
-            except Exception as error:
-                diagnostics.append({
-                    "manual_match": mid,
-                    "error": str(error)
-                })
+                except Exception as error:
+                    diagnostics.append({
+                        "manual_match": mid,
+                        "error": str(error)
+                    })
 
-    st.session_state.fixtures = sorted(
-        found.values(),
-        key=lambda fixture: (
-            fixture["date"],
-            fixture["grade"]
+        st.session_state.fixtures = sorted(
+            found.values(),
+            key=lambda x: (
+                x["date"], x["grade"]
+            )
         )
-    )
 
-    st.session_state.diagnostics = diagnostics
-    st.session_state.schedule_samples = samples
-    st.session_state.selection_rows = []
-    st.session_state.article = ""
+        st.session_state.selected_fixture_ids = [
+            fixture["id"]
+            for fixture in st.session_state.fixtures
+        ]
+
+        st.session_state.diagnostics = diagnostics
+        st.session_state.schedule_samples = samples
+        st.session_state.selection_rows = []
+        st.session_state.article = ""
+        st.session_state.workflow = "review"
+
+        # Clear old fixture checkbox values.
+        for key in list(st.session_state):
+            if key.startswith("match_checkbox_"):
+                del st.session_state[key]
+
+        st.rerun()
 
 
 # ============================================================
-# FIXTURE REVIEW
+# STEP 2 — REVIEW FIXTURES
 # ============================================================
 
-fixtures = st.session_state.fixtures
-chosen = []
+elif stage == "review":
+    if st.button("← Back to setup"):
+        st.session_state.workflow = "setup"
+        st.rerun()
 
-if fixtures:
-    metric1, metric2 = st.columns(2)
+    st.markdown("### Review your matches")
 
-    metric1.metric(
-        "Fixtures found",
-        len(fixtures)
-    )
+    fixtures = st.session_state.fixtures
 
-    metric2.metric(
-        "Grades represented",
-        len({
-            fixture["grade"]
-            for fixture in fixtures
-        })
-    )
+    if not fixtures:
+        st.warning(
+            "No matches found for those dates and teams."
+        )
+        st.caption(
+            "Try another date range or add a manual "
+            "PlayCricket match link in Advanced settings."
+        )
 
-    st.markdown("#### Review matches")
+    else:
+        metric1, metric2, metric3 = st.columns(3)
 
-    st.caption(
-        "Untick any fixtures you don't want included."
-    )
+        metric1.metric(
+            "Fixtures found",
+            len(fixtures)
+        )
 
-    select_all = st.checkbox(
-        "Select all fixtures",
-        value=True,
-        key="select_all_fixtures"
-    )
+        metric2.metric(
+            "Grades",
+            len({
+                f["grade"] for f in fixtures
+            })
+        )
 
-    for fixture in fixtures:
-        with st.container(border=True):
-            col1, col2 = st.columns([5, 1])
+        metric3.metric(
+            "Selected",
+            len(st.session_state.selected_fixture_ids)
+        )
 
-            with col1:
-                checked = st.checkbox(
-                    f"{fixture['grade']} · {fixture['name']}",
-                    value=select_all,
-                    key=(
-                        f"fixture_{fixture['id']}_{select_all}"
+        col1, col2, _ = st.columns([1, 1, 3])
+
+        with col1:
+            if st.button(
+                "Select all",
+                use_container_width=True
+            ):
+                st.session_state.selected_fixture_ids = [
+                    f["id"] for f in fixtures
+                ]
+
+                for f in fixtures:
+                    st.session_state[
+                        "match_checkbox_" + f["id"]
+                    ] = True
+
+                st.rerun()
+
+        with col2:
+            if st.button(
+                "Deselect all",
+                use_container_width=True
+            ):
+                st.session_state.selected_fixture_ids = []
+
+                for f in fixtures:
+                    st.session_state[
+                        "match_checkbox_" + f["id"]
+                    ] = False
+
+                st.rerun()
+
+        # Group fixture cards by grade.
+        for grade in dict.fromkeys(
+            f["grade"] for f in fixtures
+        ):
+            st.markdown(f"#### {grade}")
+
+            grade_fixtures = [
+                f for f in fixtures
+                if f["grade"] == grade
+            ]
+
+            for fixture in grade_fixtures:
+                mid = fixture["id"]
+                key = "match_checkbox_" + mid
+
+                with st.container(border=True):
+                    col, status_col = st.columns(
+                        [5, 1]
                     )
-                )
 
-                st.caption(
-                    f"📅 {fixture['date'] or 'Date unavailable'}"
-                    f" · 📍 {fixture['venue'] or 'Venue unavailable'}"
-                    f" · [PlayCricket]({fixture['url']})"
-                )
+                    with col:
+                        checked = st.checkbox(
+                            fixture["name"],
+                            value=(
+                                mid in
+                                st.session_state.selected_fixture_ids
+                            ),
+                            key=key
+                        )
 
-            with col2:
-                st.caption(
-                    fixture["status"] or "Fixture"
-                )
+                        st.caption(
+                            f"📅 {fixture['date']} · "
+                            f"📍 {fixture['venue'] or 'Venue unavailable'}"
+                        )
 
-            if checked:
-                chosen.append(fixture)
+                        st.markdown(
+                            f"[Open PlayCricket ↗]"
+                            f"({fixture['url']})"
+                        )
 
-    st.caption(
-        f"{len(chosen)} match(es) selected "
-        f"for {mode.lower()}."
-    )
+                    with status_col:
+                        st.caption(
+                            fixture["status"] or "Fixture"
+                        )
 
-elif search_clicked:
-    st.warning(
-        "No fixtures found for those dates and grades. "
-        "Check Advanced diagnostics or enter a match link."
-    )
+                    if (
+                        checked
+                        and mid not in
+                        st.session_state.selected_fixture_ids
+                    ):
+                        st.session_state.selected_fixture_ids.append(
+                            mid
+                        )
+
+                    elif (
+                        not checked
+                        and mid in
+                        st.session_state.selected_fixture_ids
+                    ):
+                        st.session_state.selected_fixture_ids.remove(
+                            mid
+                        )
+
+        st.divider()
+
+        if st.button(
+            "Continue to Create Content →",
+            type="primary",
+            use_container_width=True,
+            disabled=not st.session_state.selected_fixture_ids
+        ):
+            st.session_state.workflow = "export"
+            st.rerun()
+
+
+# ============================================================
+# STEP 3 — CREATE & EXPORT
+# ============================================================
 
 else:
-    st.info(
-        "Choose your dates and grades, "
-        "then click **Find HBCC Matches**."
+    if st.button("← Back to fixtures"):
+        st.session_state.workflow = "review"
+        st.rerun()
+
+    chosen = [
+        fixture
+        for fixture in st.session_state.fixtures
+        if fixture["id"]
+        in st.session_state.selected_fixture_ids
+    ]
+
+    mode = st.session_state.content_mode
+
+    st.markdown(f"### {mode}")
+    st.caption(
+        f"{len(chosen)} match(es) selected"
     )
+
+    # --------------------------------------------------------
+    # MATCH REPORT / WEEKEND REPORT
+    # --------------------------------------------------------
+
+    if mode in ("Match Report", "Weekend Report"):
+        if mode == "Match Report" and chosen:
+            picked = st.selectbox(
+                "Match to write about",
+                chosen,
+                format_func=lambda f: (
+                    f"{f['grade']} · {f['name']}"
+                )
+            )
+            report_fixtures = [picked]
+        else:
+            report_fixtures = chosen
+
+        with st.expander(
+            "✍️ Writing preferences",
+            expanded=True
+        ):
+            context = st.text_area(
+                "Additional context",
+                placeholder=(
+                    "Milestones, debuts, achievements, "
+                    "club events..."
+                )
+            )
+
+            avoid = st.text_area(
+                "Anything to avoid?",
+                height=80
+            )
+
+            length = st.select_slider(
+                "Approximate article length",
+                options=[
+                    300, 500, 700, 1000, 1500
+                ],
+                value=(
+                    500 if mode == "Match Report"
+                    else 1000
+                )
+            )
+
+        if st.button(
+            "✨ Generate " + mode,
+            type="primary",
+            use_container_width=True,
+            disabled=not report_fixtures
+        ):
+            try:
+                with st.spinner(
+                    "Reading scorecards and writing..."
+                ):
+                    st.session_state.article = (
+                        generate_article(
+                            report_fixtures,
+                            mode,
+                            length,
+                            context,
+                            avoid
+                        )
+                    )
+
+            except Exception as error:
+                st.error(
+                    f"Unable to generate article: {error}"
+                )
+
+        if st.session_state.article:
+            st.success("Article ready for review")
+
+            st.markdown(
+                st.session_state.article
+            )
+
+            with st.expander(
+                "Edit article before exporting"
+            ):
+                st.text_area(
+                    "Article text",
+                    key="article",
+                    height=450
+                )
+
+            st.download_button(
+                "⬇ Download article",
+                st.session_state.article,
+                "hbcc_report.txt",
+                "text/plain",
+                use_container_width=True
+            )
+
+            st.caption(
+                "Verify scores and match facts "
+                "before publishing."
+            )
+
+    # --------------------------------------------------------
+    # TEAM SELECTIONS
+    # --------------------------------------------------------
+
+    else:
+        if st.button(
+            "👥 Retrieve Selected Teams",
+            type="primary",
+            use_container_width=True,
+            disabled=not chosen
+        ):
+            rows = []
+
+            with st.spinner(
+                "Retrieving published team lists..."
+            ):
+                for fixture in chosen:
+                    row = dict(fixture)
+                    row["candidates"] = []
+                    row["error"] = ""
+
+                    try:
+                        detail = match_detail(
+                            fixture["id"]
+                        )
+
+                        row["candidates"] = (
+                            selection_candidates(
+                                detail,
+                                fixture["team_id"]
+                            )
+                        )
+
+                        row["venue"] = (
+                            row["venue"]
+                            or venue_of(
+                                detail.get(
+                                    "matchSummary"
+                                ) or {}
+                            )
+                        )
+
+                    except Exception as error:
+                        row["error"] = str(error)
+
+                    rows.append(row)
+
+            st.session_state.selection_rows = rows
+
+        if st.session_state.selection_rows:
+            edited_rows = []
+            total_players = 0
+
+            for row in st.session_state.selection_rows:
+                mid = row["id"]
+                candidates = row["candidates"]
+
+                with st.expander(
+                    f"{row['grade']} · {row['name']}",
+                    expanded=(
+                        len(
+                            st.session_state.selection_rows
+                        ) <= 3
+                    )
+                ):
+                    st.caption(
+                        f"📅 {row['date']} · "
+                        f"📍 {row['venue'] or 'Venue unavailable'}"
+                    )
+
+                    if row["error"]:
+                        st.error(row["error"])
+
+                    if candidates:
+                        selected = st.selectbox(
+                            "Team list source",
+                            list(range(len(candidates))),
+                            format_func=lambda i: (
+                                f"{len(candidates[i]['players'])} "
+                                f"players · "
+                                f"{candidates[i]['source']}"
+                            ),
+                            key="source_" + mid
+                        )
+
+                        candidate = candidates[selected]
+                        source_players = candidate["players"]
+
+                        if not candidate["explicit"]:
+                            st.caption(
+                                "General player list — "
+                                "verify against the published team."
+                            )
+
+                        if not any(
+                            "(c)" in player
+                            for player in source_players
+                        ):
+                            st.caption(
+                                "Captain not detected. "
+                                "Add (c) after the captain's "
+                                "name if required."
+                            )
+
+                    else:
+                        source_players = []
+
+                        st.info(
+                            "Selected team coming soon. "
+                            "You can add players manually "
+                            "when published."
+                        )
+
+                    edit_key = "player_edit_" + mid
+                    source_key = "player_source_" + mid
+
+                    signature = tuple(source_players)
+
+                    if (
+                        st.session_state.get(source_key)
+                        != signature
+                    ):
+                        st.session_state[edit_key] = (
+                            "\n".join(source_players)
+                        )
+                        st.session_state[source_key] = (
+                            signature
+                        )
+
+                    raw = st.text_area(
+                        "Published players "
+                        "(one per line; mark captain with (c))",
+                        key=edit_key,
+                        height=max(
+                            260,
+                            len(source_players) * 28 + 55
+                        )
+                    )
+
+                    players = [
+                        player.strip()
+                        for player in raw.splitlines()
+                        if player.strip()
+                    ]
+
+                    total_players += len(players)
+
+                    st.caption(
+                        f"{len(players)} players · "
+                        f"[Verify on PlayCricket]"
+                        f"({row['url']})"
+                    )
+
+                    with st.expander(
+                        "Technical · Player list sources"
+                    ):
+                        st.json([
+                            {
+                                "source": c["source"],
+                                "players": c["players"]
+                            }
+                            for c in candidates
+                        ])
+
+                    edited_rows.append({
+                        **row,
+                        "players": players
+                    })
+
+            # Combined announcement
+            output = selection_output(edited_rows)
+
+            st.divider()
+            st.markdown(
+                "### Combined Team Announcement"
+            )
+
+            st.caption(
+                f"{len(edited_rows)} teams · "
+                f"{total_players} players"
+            )
+
+            # Complete preview without internal scrolling.
+            st.code(
+                output,
+                language=None,
+                wrap_lines=True
+            )
+
+            with st.expander(
+                "Edit or copy announcement"
+            ):
+                if (
+                    st.session_state.get(
+                        "combined_source"
+                    ) != output
+                ):
+                    st.session_state["combined_edit"] = (
+                        output
+                    )
+                    st.session_state["combined_source"] = (
+                        output
+                    )
+
+                st.text_area(
+                    "Copy-ready selections",
+                    key="combined_edit",
+                    height=450
+                )
+
+            st.download_button(
+                "⬇ Download Team Selections",
+                st.session_state.get(
+                    "combined_edit", output
+                ),
+                "hbcc_team_selections.txt",
+                "text/plain",
+                use_container_width=True
+            )
+
+            st.caption(
+                "Verify player lists and captains "
+                "before publishing."
+            )
 
 
 # ============================================================
-# TECHNICAL DIAGNOSTICS
+# DIAGNOSTICS AND FOOTER
 # ============================================================
 
 if st.session_state.diagnostics:
-    with st.expander(
-        "🔧 Advanced · PlayCricket diagnostics"
+    with st.sidebar.expander(
+        "PlayCricket search diagnostics"
     ):
-        st.write("Fixture search results")
-
         st.json(
             st.session_state.diagnostics
         )
-
-        st.write("Actual matchSchedule data")
-
         st.json(
             st.session_state.schedule_samples
         )
 
-
-# ============================================================
-# STEP 3 — CREATE CONTENT
-# ============================================================
-
 st.divider()
-
-st.markdown(
-    '<div class="hbcc-section">'
-    'STEP 03 · CREATE & EXPORT'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
-# MATCH REPORT / WEEKEND WRAP
-# ============================================================
-
-if mode in (
-    "Match Report",
-    "Weekend Report"
-):
-    if mode == "Match Report" and chosen:
-        picked = st.selectbox(
-            "Match to write about",
-            chosen,
-            format_func=lambda fixture: (
-                f"{fixture['grade']} · {fixture['name']}"
-            )
-        )
-
-        report_fixtures = [picked]
-
-    else:
-        report_fixtures = chosen
-
-    with st.expander(
-        "✍️ Writing preferences",
-        expanded=True
-    ):
-        context = st.text_area(
-            "Extra context (optional)",
-            placeholder=(
-                "Club milestones, debuts, achievements, "
-                "special events..."
-            )
-        )
-
-        avoid = st.text_area(
-            "Anything to avoid? (optional)",
-            height=80
-        )
-
-        length = st.select_slider(
-            "Article length (approximate words)",
-            options=[
-                300,
-                500,
-                700,
-                1000,
-                1500
-            ],
-            value=(
-                500
-                if mode == "Match Report"
-                else 1000
-            )
-        )
-
-    button_label = (
-        "✨ Generate Match Report"
-        if mode == "Match Report"
-        else "✨ Generate Weekend Wrap"
-    )
-
-    if st.button(
-        button_label,
-        type="primary",
-        use_container_width=True,
-        disabled=not report_fixtures
-    ):
-        try:
-            with st.spinner(
-                "Reading scorecards and writing your article..."
-            ):
-                article = generate_article(
-                    report_fixtures,
-                    mode,
-                    length,
-                    context,
-                    avoid
-                )
-
-                st.session_state.article = article
-
-        except Exception as error:
-            st.error(
-                f"Unable to generate the article: {error}"
-            )
-
-    if st.session_state.article:
-        st.success(
-            "Your article is ready to review."
-        )
-
-        st.subheader("Article preview")
-
-        st.markdown(
-            st.session_state.article
-        )
-
-        with st.expander(
-            "Edit article before exporting"
-        ):
-            st.text_area(
-                "Article text",
-                key="article",
-                height=450
-            )
-
-        st.download_button(
-            "⬇ Download article",
-            st.session_state.article,
-            "hbcc_report.txt",
-            "text/plain",
-            use_container_width=True
-        )
-
-        st.caption(
-            "Check all match facts against "
-            "PlayCricket before publishing."
-        )
-
-
-# ============================================================
-# TEAM SELECTIONS
-# ============================================================
-
-else:
-    st.caption(
-        "Retrieve selections, check the published names "
-        "and captain, then export all chosen grades together."
-    )
-
-    if st.button(
-        "👥 Retrieve Selected Teams",
-        type="primary",
-        use_container_width=True,
-        disabled=not chosen
-    ):
-        rows = []
-
-        with st.spinner(
-            "Retrieving HBCC team lists..."
-        ):
-            for fixture in chosen:
-                row = dict(fixture)
-
-                row["candidates"] = []
-                row["error"] = ""
-
-                try:
-                    detail = match_detail(
-                        fixture["id"]
-                    )
-
-                    row["candidates"] = (
-                        selection_candidates(
-                            detail,
-                            fixture["team_id"]
-                        )
-                    )
-
-                    row["venue"] = (
-                        row["venue"]
-                        or venue_of(
-                            detail.get("matchSummary") or {}
-                        )
-                    )
-
-                except Exception as error:
-                    row["error"] = str(error)
-
-                rows.append(row)
-
-        st.session_state.selection_rows = rows
-
-    if st.session_state.selection_rows:
-        st.success(
-            f"Retrieved "
-            f"{len(st.session_state.selection_rows)} team(s). "
-            "Review names before publishing."
-        )
-
-        edited_rows = []
-
-        for row in st.session_state.selection_rows:
-            mid = row["id"]
-            candidates = row["candidates"]
-
-            with st.expander(
-                f"{row['grade']} · {row['name']}",
-                expanded=(
-                    len(st.session_state.selection_rows) <= 3
-                )
-            ):
-                st.caption(
-                    f"📅 {row['date']} · "
-                    f"📍 {row['venue'] or 'Venue unavailable'}"
-                )
-
-                if row["error"]:
-                    st.error(
-                        "Unable to retrieve selection: "
-                        + row["error"]
-                    )
-
-                if candidates:
-                    selected = st.selectbox(
-                        "Team list source",
-                        list(range(len(candidates))),
-                        format_func=lambda i: (
-                            f"{len(candidates[i]['players'])} "
-                            f"players · {candidates[i]['source']}"
-                        ),
-                        key="source_" + mid
-                    )
-
-                    candidate = candidates[selected]
-                    source_players = candidate["players"]
-
-                    if not candidate["explicit"]:
-                        st.caption(
-                            "This is a general team list. "
-                            "Confirm it matches the published "
-                            "PlayCricket selection."
-                        )
-
-                    if not any(
-                        "(c)" in player
-                        for player in source_players
-                    ):
-                        st.caption(
-                            "Captain not identified in this "
-                            "API field. Add **(c)** after "
-                            "the captain's name if needed."
-                        )
-
-                else:
-                    source_players = []
-
-                    st.warning(
-                        "No HBCC player list found. "
-                        "You can enter the published "
-                        "selection manually."
-                    )
-
-                edit_key = "player_edit_" + mid
-                source_key = "player_source_" + mid
-
-                signature = tuple(source_players)
-
-                if (
-                    st.session_state.get(source_key)
-                    != signature
-                ):
-                    st.session_state[edit_key] = (
-                        "\n".join(source_players)
-                    )
-
-                    st.session_state[source_key] = (
-                        signature
-                    )
-
-                # Auto-size player list.
-                raw = st.text_area(
-                    "Selected players "
-                    "(one per line; add (c) for captain)",
-                    key=edit_key,
-                    height=max(
-                        260,
-                        len(source_players) * 28 + 55
-                    )
-                )
-
-                players = [
-                    player.strip()
-                    for player in raw.splitlines()
-                    if player.strip()
-                ]
-
-                st.caption(
-                    f"{len(players)} players · "
-                    f"[Verify on PlayCricket]({row['url']})"
-                )
-
-                with st.expander(
-                    "Technical details · Team selection sources"
-                ):
-                    st.json([
-                        {
-                            "source": candidate["source"],
-                            "count": len(
-                                candidate["players"]
-                            ),
-                            "players": candidate["players"]
-                        }
-                        for candidate in candidates
-                    ])
-
-                updated = dict(row)
-                updated["players"] = players
-
-                edited_rows.append(updated)
-
-        # ====================================================
-        # COMBINED ANNOUNCEMENT
-        # ====================================================
-
-        output = selection_output(
-            edited_rows
-        )
-
-        st.subheader(
-            "Combined Team Announcement"
-        )
-
-        st.caption(
-            f"{len(edited_rows)} teams · "
-            f"{sum(len(row['players']) for row in edited_rows)} "
-            "players · Full preview below"
-        )
-
-        # Full announcement, no internal scrolling.
-        st.code(
-            output,
-            language=None,
-            wrap_lines=True
-        )
-
-        with st.expander(
-            "Edit or copy combined announcement"
-        ):
-            signature = output
-
-            if (
-                st.session_state.get("combined_source")
-                != signature
-            ):
-                st.session_state["combined_edit"] = output
-                st.session_state["combined_source"] = (
-                    signature
-                )
-
-            st.text_area(
-                "Copy-ready announcement",
-                key="combined_edit",
-                height=450
-            )
-
-        st.download_button(
-            "⬇ Download Team Selections",
-            st.session_state.get(
-                "combined_edit",
-                output
-            ),
-            "hbcc_team_selections.txt",
-            "text/plain",
-            use_container_width=True
-        )
-
-        st.caption(
-            "Player lists and captains may change. "
-            "Verify against PlayCricket before posting."
-        )
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.markdown("---")
 
 st.caption(
     "HBCC Content Studio · Built for the Hawks · "
-    "Data sourced from PlayCricket. "
-    "Always verify before publishing."
+    "PlayCricket data should be verified before publishing."
 )
