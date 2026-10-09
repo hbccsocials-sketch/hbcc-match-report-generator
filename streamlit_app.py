@@ -1284,6 +1284,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
 stage = st.session_state.workflow
 
 steps = [
@@ -1292,24 +1293,35 @@ steps = [
     ("export", "03 · Create & Export")
 ]
 
-columns = st.columns(3)
+columns = st.columns(3, gap="small")
 
-for column, (step_key, label) in zip(
-    columns,
-    steps
-):
+for column, (step_key, label) in zip(columns, steps):
     with column:
-        active = (
-            " active"
-            if stage == step_key
-            else ""
+        is_active = stage == step_key
+
+        # Only allow navigation to steps already reached
+        can_navigate = (
+            step_key == "setup"
+            or (
+                step_key == "review"
+                and bool(st.session_state.fixtures)
+            )
+            or (
+                step_key == "export"
+                and bool(st.session_state.selected_fixture_ids)
+            )
         )
 
-        st.markdown(
-            f'<div class="hbcc-step{active}">'
-            f'{label}</div>',
-            unsafe_allow_html=True
-        )
+        if st.button(
+            label,
+            key=f"nav_{step_key}",
+            type="primary" if is_active else "secondary",
+            use_container_width=True,
+            disabled=not can_navigate
+        ):
+            st.session_state.workflow = step_key
+            st.rerun()
+
 
 
 # ============================================================
