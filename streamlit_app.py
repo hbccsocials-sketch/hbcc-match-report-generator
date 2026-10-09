@@ -818,7 +818,7 @@ def selection_output(rows):
             )
         else:
             lines.append(
-                "Selection not verified — check PlayCricket"
+                "Selected team coming soon"
             )
 
         lines.append("")
