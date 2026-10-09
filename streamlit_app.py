@@ -11,7 +11,7 @@ from google.genai import types
 
 
 # ============================================================
-# HBCC CONTENT STUDIO — CLUB BRANDED VERSION
+# HBCC CONTENT STUDIO
 # ============================================================
 
 st.set_page_config(
@@ -22,6 +22,7 @@ st.set_page_config(
 )
 
 BASE = "https://grassrootsapiproxy.cricket.com.au/scores"
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json"
@@ -92,40 +93,47 @@ UUID = re.compile(
 # STYLING
 # ============================================================
 
-st.markdown("""
+st.markdown(
+    """
 <style>
 .stApp {
     background: #f5f7fa;
     color: #18263a;
 }
+
 .block-container {
     max-width: 1200px;
     padding-top: 1.2rem;
     padding-bottom: 3rem;
 }
+
 .hbcc-hero {
-    background: linear-gradient(115deg,#0f192d,#203a5b);
+    background: linear-gradient(115deg, #0f192d, #203a5b);
     padding: 23px 30px;
     border-radius: 15px;
     border-bottom: 4px solid #c8102e;
     margin-bottom: 18px;
 }
+
 .hbcc-hero h1 {
     font-size: 2rem;
     margin: 5px 0;
     color: white !important;
 }
+
 .hbcc-hero p {
     color: #d3dce9;
     margin: 0;
     font-size: 14px;
 }
+
 .hbcc-eyebrow {
     color: #f5b82e;
     font-weight: 800;
     font-size: 11px;
     letter-spacing: 1.5px;
 }
+
 .hbcc-step {
     padding: 10px 15px;
     border-radius: 10px;
@@ -134,11 +142,13 @@ st.markdown("""
     font-size: 13px;
     text-align: center;
 }
+
 .hbcc-step.active {
     background: #0f192d;
     color: white;
     border-color: #0f192d;
 }
+
 .hbcc-section {
     color: #c8102e;
     font-weight: 800;
@@ -146,21 +156,25 @@ st.markdown("""
     font-size: 12px;
     margin: 10px 0;
 }
-.stButton>button[kind="primary"] {
+
+.stButton > button[kind="primary"] {
     background: #c8102e;
     border-color: #c8102e;
     color: white;
     border-radius: 10px;
     font-weight: 700;
 }
-.stButton>button[kind="primary"]:hover {
+
+.stButton > button[kind="primary"]:hover {
     background: #a30e27;
     border-color: #a30e27;
 }
-.stDownloadButton>button {
+
+.stDownloadButton > button {
     border: 1px solid #0f192d;
     border-radius: 10px;
 }
+
 div[data-testid="stMetric"] {
     background: white;
     border: 1px solid #e4e8ef;
@@ -168,7 +182,9 @@ div[data-testid="stMetric"] {
     border-radius: 12px;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
@@ -181,18 +197,30 @@ def name_of(value):
 
     if isinstance(value, dict):
         for key in (
-            "displayName", "fullName", "name",
-            "playerName", "participantName",
-            "teamName", "shortName",
-            "playerShortName", "title"
+            "displayName",
+            "fullName",
+            "name",
+            "playerName",
+            "participantName",
+            "teamName",
+            "shortName",
+            "playerShortName",
+            "title"
         ):
             result = value.get(key)
+
             if isinstance(result, str) and result.strip():
                 return result.strip()
 
-        for key in ("player", "participant", "team", "person"):
+        for key in (
+            "player",
+            "participant",
+            "team",
+            "person"
+        ):
             if isinstance(value.get(key), dict):
                 result = name_of(value[key])
+
                 if result:
                     return result
 
@@ -206,15 +234,19 @@ def parse_date(value):
     if isinstance(value, (int, float)):
         if value < 100000000:
             return None
+
         try:
             timestamp = (
                 value / 1000
                 if value > 100000000000
                 else value
             )
+
             return datetime.fromtimestamp(
-                timestamp, tz=timezone.utc
+                timestamp,
+                tz=timezone.utc
             ).date()
+
         except (ValueError, OSError, OverflowError):
             return None
 
@@ -223,18 +255,25 @@ def parse_date(value):
             r"(?<!\d)(20\d{2})[-/](\d{1,2})[-/](\d{1,2})(?!\d)",
             value
         )
+
         if match:
             try:
-                return date(*(int(x) for x in match.groups()))
+                return date(
+                    *(int(x) for x in match.groups())
+                )
+
             except ValueError:
                 pass
+
         return None
 
     if isinstance(value, list):
         for item in value:
             result = parse_date(item)
+
             if result:
                 return result
+
         return None
 
     if isinstance(value, dict):
@@ -244,30 +283,48 @@ def parse_date(value):
         ):
             if all(part in value for part in parts):
                 try:
-                    return date(*(int(value[p]) for p in parts))
+                    return date(
+                        *(int(value[p]) for p in parts)
+                    )
+
                 except (ValueError, TypeError):
                     pass
 
         priority = (
-            "matchSchedule", "startDateTime",
-            "startDate", "matchDate", "date",
-            "scheduledStart", "scheduledDate",
-            "startTime", "start",
-            "matchStartDate", "matchStartDateTime",
-            "days", "dates", "firstDay",
-            "dateTime", "utcStartTime",
-            "localStartTime", "startDateTimeLocal"
+            "matchSchedule",
+            "startDateTime",
+            "startDate",
+            "matchDate",
+            "date",
+            "scheduledStart",
+            "scheduledDate",
+            "startTime",
+            "start",
+            "matchStartDate",
+            "matchStartDateTime",
+            "days",
+            "dates",
+            "firstDay",
+            "dateTime",
+            "utcStartTime",
+            "localStartTime",
+            "startDateTimeLocal"
         )
 
         for key in priority:
             if key in value:
                 result = parse_date(value[key])
+
                 if result:
                     return result
 
         for item in value.values():
-            if isinstance(item, (str, int, float, dict, list)):
+            if isinstance(
+                item,
+                (str, int, float, dict, list)
+            ):
                 result = parse_date(item)
+
                 if result:
                     return result
 
@@ -276,10 +333,19 @@ def parse_date(value):
 
 def match_id(obj):
     if isinstance(obj, dict):
-        for key in ("id", "matchId", "matchID"):
+        for key in (
+            "id",
+            "matchId",
+            "matchID"
+        ):
             value = obj.get(key)
-            if isinstance(value, str) and UUID.fullmatch(value):
+
+            if (
+                isinstance(value, str)
+                and UUID.fullmatch(value)
+            ):
                 return value
+
     return None
 
 
@@ -287,16 +353,23 @@ def teams_of(obj):
     if not isinstance(obj, dict):
         return []
 
-    for key in ("teams", "teamSummaries"):
+    for key in (
+        "teams",
+        "teamSummaries"
+    ):
         if isinstance(obj.get(key), list):
             return [
-                x for x in obj[key]
-                if isinstance(x, dict)
+                team
+                for team in obj[key]
+                if isinstance(team, dict)
             ]
 
     return [
         obj[key]
-        for key in ("homeTeam", "awayTeam")
+        for key in (
+            "homeTeam",
+            "awayTeam"
+        )
         if isinstance(obj.get(key), dict)
     ]
 
@@ -305,15 +378,19 @@ def hbcc_team(obj, expected_id):
     if not isinstance(obj, dict):
         return False
 
-    ids = [
+    identifiers = [
         str(obj.get(key) or "")
-        for key in ("id", "teamId", "clubTeamId")
+        for key in (
+            "id",
+            "teamId",
+            "clubTeamId"
+        )
     ]
 
     name = name_of(obj).lower()
 
     return (
-        (bool(expected_id) and expected_id in ids)
+        (bool(expected_id) and expected_id in identifiers)
         or "hawthorn boroondara" in name
         or name == "hb hawks"
     )
@@ -324,7 +401,12 @@ def fixture_name(obj):
         name_of(team)
         for team in teams_of(obj)
     ]
-    names = [x for x in names if x]
+
+    names = [
+        name
+        for name in names
+        if name
+    ]
 
     if len(names) >= 2:
         return " vs ".join(names[:2])
@@ -335,12 +417,16 @@ def fixture_name(obj):
 def venue_of(obj):
     if isinstance(obj, dict):
         for key in (
-            "venue", "ground",
-            "venueName", "groundName"
+            "venue",
+            "ground",
+            "venueName",
+            "groundName"
         ):
             value = obj.get(key)
+
             if value:
                 return name_of(value) or str(value)
+
     return ""
 
 
@@ -351,7 +437,9 @@ def fetch(url):
         headers=HEADERS,
         timeout=30
     )
+
     response.raise_for_status()
+
     return response.json()
 
 
@@ -387,8 +475,9 @@ def collect_matches(payload):
         and isinstance(payload.get("matches"), list)
     ):
         return [
-            x for x in payload["matches"]
-            if isinstance(x, dict)
+            match
+            for match in payload["matches"]
+            if isinstance(match, dict)
         ]
 
     found = {}
@@ -396,21 +485,29 @@ def collect_matches(payload):
     def walk(value):
         if isinstance(value, dict):
             mid = match_id(value)
+
             if mid:
                 found[mid] = value
+
             for child in value.values():
                 if isinstance(child, (dict, list)):
                     walk(child)
+
         elif isinstance(value, list):
             for child in value:
                 walk(child)
 
     walk(payload)
+
     return list(found.values())
 
 
 def fixture_from(record, grade, team_id, detail=None):
-    summary = (detail or {}).get("matchSummary") or {}
+    summary = (
+        (detail or {}).get("matchSummary")
+        or {}
+    )
+
     if not isinstance(summary, dict):
         summary = {}
 
@@ -421,6 +518,7 @@ def fixture_from(record, grade, team_id, detail=None):
     )
 
     label = fixture_name(record)
+
     if label == "Fixture":
         label = fixture_name(summary)
 
@@ -443,19 +541,27 @@ def fixture_from(record, grade, team_id, detail=None):
 
 
 def manual_ids(text):
-    ids = []
+    identifiers = []
 
     for token in re.split(r"[\s,]+", text):
         found = re.search(
             r"/match/([0-9a-fA-F-]{36})",
             token
         )
-        mid = found.group(1) if found else token
 
-        if UUID.fullmatch(mid) and mid not in ids:
-            ids.append(mid)
+        mid = (
+            found.group(1)
+            if found
+            else token
+        )
 
-    return ids
+        if (
+            UUID.fullmatch(mid)
+            and mid not in identifiers
+        ):
+            identifiers.append(mid)
+
+    return identifiers
 
 
 # ============================================================
@@ -463,10 +569,16 @@ def manual_ids(text):
 # ============================================================
 
 SELECTION_KEYS = (
-    "selectedPlayers", "teamSelection",
-    "teamSelections", "lineup", "lineUp",
-    "playingXI", "players", "participants",
-    "selectedParticipants", "squad"
+    "selectedPlayers",
+    "teamSelection",
+    "teamSelections",
+    "lineup",
+    "lineUp",
+    "playingXI",
+    "players",
+    "participants",
+    "selectedParticipants",
+    "squad"
 )
 
 
@@ -475,17 +587,22 @@ def captain_flag(item):
         return False
 
     for key in (
-        "isCaptain", "captain",
-        "teamCaptain", "isTeamCaptain"
+        "isCaptain",
+        "captain",
+        "teamCaptain",
+        "isTeamCaptain"
     ):
         if item.get(key) is True:
             return True
 
     for key in (
-        "role", "teamRole",
-        "playerRole", "designation"
+        "role",
+        "teamRole",
+        "playerRole",
+        "designation"
     ):
         role = item.get(key)
+
         if isinstance(role, dict):
             role = name_of(role)
 
@@ -503,22 +620,31 @@ def captain_references(team):
     refs = set()
 
     for key in (
-        "captainId", "captainPlayerId",
+        "captainId",
+        "captainPlayerId",
         "captainParticipantId",
-        "teamCaptainId", "captainName"
+        "teamCaptainId",
+        "captainName"
     ):
         if team.get(key):
-            refs.add(str(team[key]).strip().lower())
+            refs.add(
+                str(team[key]).strip().lower()
+            )
 
     captain = team.get("captain")
 
     if isinstance(captain, dict):
         for key in (
-            "id", "playerId",
-            "participantId", "displayName", "name"
+            "id",
+            "playerId",
+            "participantId",
+            "displayName",
+            "name"
         ):
             if captain.get(key):
-                refs.add(str(captain[key]).strip().lower())
+                refs.add(
+                    str(captain[key]).strip().lower()
+                )
 
     elif isinstance(captain, str):
         refs.add(captain.strip().lower())
@@ -550,22 +676,39 @@ def parse_player_list(items, team):
             continue
 
         clean = re.sub(
-            r"\s*\(c\)\s*$", "",
-            name, flags=re.I
+            r"\s*\(c\)\s*$",
+            "",
+            name,
+            flags=re.I
         ).strip()
 
-        player_refs = {name.lower(), clean.lower()}
+        player_refs = {
+            name.lower(),
+            clean.lower()
+        }
 
         if isinstance(item, dict):
-            for key in ("id", "playerId", "participantId"):
+            for key in (
+                "id",
+                "playerId",
+                "participantId"
+            ):
                 if item.get(key):
-                    player_refs.add(str(item[key]).lower())
+                    player_refs.add(
+                        str(item[key]).lower()
+                    )
 
-            for nested_key in ("player", "participant"):
+            for nested_key in (
+                "player",
+                "participant"
+            ):
                 nested = item.get(nested_key)
+
                 if isinstance(nested, dict):
                     for key in (
-                        "id", "playerId", "participantId"
+                        "id",
+                        "playerId",
+                        "participantId"
                     ):
                         if nested.get(key):
                             player_refs.add(
@@ -582,6 +725,7 @@ def parse_player_list(items, team):
             continue
 
         seen.add(clean.lower())
+
         players.append(
             clean + (" (c)" if is_captain else "")
         )
@@ -594,8 +738,12 @@ def selection_candidates(detail, expected_id):
     seen = set()
 
     skip = {
-        "scorecard", "batting", "bowling",
-        "innings", "balls", "deliveries",
+        "scorecard",
+        "batting",
+        "bowling",
+        "innings",
+        "balls",
+        "deliveries",
         "scorecards"
     }
 
@@ -608,14 +756,18 @@ def selection_candidates(detail, expected_id):
                 continue
 
             players = parse_player_list(
-                team[key], team
+                team[key],
+                team
             )
 
             if not players:
                 continue
 
             source = f"{path}.{key}"
-            signature = (source, tuple(players))
+            signature = (
+                source,
+                tuple(players)
+            )
 
             if signature in seen:
                 continue
@@ -623,14 +775,17 @@ def selection_candidates(detail, expected_id):
             seen.add(signature)
 
             explicit = key not in (
-                "players", "participants", "squad"
+                "players",
+                "participants",
+                "squad"
             )
 
             score = (
                 (100 if explicit else 50)
                 + len(players)
                 + (
-                    15 if any("(c)" in p for p in players)
+                    15
+                    if any("(c)" in p for p in players)
                     else 0
                 )
             )
@@ -653,6 +808,7 @@ def selection_candidates(detail, expected_id):
             for key, value in obj.items():
                 if key in skip:
                     continue
+
                 if isinstance(value, (dict, list)):
                     walk(
                         value,
@@ -673,7 +829,10 @@ def selection_candidates(detail, expected_id):
 
     return sorted(
         candidates,
-        key=lambda x: (x["score"], len(x["players"])),
+        key=lambda x: (
+            x["score"],
+            len(x["players"])
+        ),
         reverse=True
     )
 
@@ -698,11 +857,15 @@ def selection_output(rows):
             lines.extend(
                 f"{i}. {player}"
                 for i, player in enumerate(
-                    row["players"], 1
+                    row["players"],
+                    1
                 )
             )
+
         else:
-            lines.append("Selected team coming soon")
+            lines.append(
+                "Selected team coming soon"
+            )
 
         lines.append("")
 
@@ -741,8 +904,12 @@ def innings_summary(detail):
                     if name and "*" not in name:
                         batters.append({
                             "name": name,
-                            "runs": player.get("runsScored"),
-                            "balls": player.get("ballsFaced"),
+                            "runs": player.get(
+                                "runsScored"
+                            ),
+                            "balls": player.get(
+                                "ballsFaced"
+                            ),
                             "dismissal": player.get(
                                 "dismissalText"
                             )
@@ -780,6 +947,7 @@ def innings_summary(detail):
                     "batting": batters,
                     "bowling": bowlers
                 })
+
                 return
 
             for child in value.values():
@@ -790,6 +958,7 @@ def innings_summary(detail):
                 walk(child)
 
     walk(detail)
+
     return output
 
 
@@ -799,7 +968,8 @@ def ball_highlights(data):
     def walk(value):
         if isinstance(value, dict):
             required = {
-                "overNumber", "ballNumber",
+                "overNumber",
+                "ballNumber",
                 "progressRuns"
             }
 
@@ -809,13 +979,21 @@ def ball_highlights(data):
                     or (value.get("runsBat") or 0) >= 4
                 ):
                     events.append({
-                        "over": value.get("overNumber"),
-                        "ball": value.get("ballNumber"),
-                        "score": value.get("progressRuns"),
+                        "over": value.get(
+                            "overNumber"
+                        ),
+                        "ball": value.get(
+                            "ballNumber"
+                        ),
+                        "score": value.get(
+                            "progressRuns"
+                        ),
                         "wickets": value.get(
                             "progressWickets"
                         ),
-                        "runsBat": value.get("runsBat"),
+                        "runsBat": value.get(
+                            "runsBat"
+                        ),
                         "wicket": bool(
                             value.get(
                                 "dismissedParticipantId"
@@ -828,6 +1006,7 @@ def ball_highlights(data):
                             "bowlerShortName"
                         )
                     })
+
                 return
 
             for child in value.values():
@@ -838,12 +1017,19 @@ def ball_highlights(data):
                 walk(child)
 
     walk(data)
+
     return events[:100]
 
 
 def report_data(fixture):
-    detail = match_detail(fixture["id"])
-    summary = detail.get("matchSummary") or {}
+    detail = match_detail(
+        fixture["id"]
+    )
+
+    summary = (
+        detail.get("matchSummary")
+        or {}
+    )
 
     if not isinstance(summary, dict):
         summary = {}
@@ -853,7 +1039,9 @@ def report_data(fixture):
         "grade": fixture["grade"],
         "date": fixture["date"],
         "venue": fixture["venue"],
-        "result": summary.get("resultText"),
+        "result": summary.get(
+            "resultText"
+        ),
         "teams": teams_of(summary),
         "innings": innings_summary(detail)
     }
@@ -862,6 +1050,7 @@ def report_data(fixture):
         result["key_balls"] = ball_highlights(
             match_balls(fixture["id"])
         )
+
     except Exception:
         result["key_balls"] = "Unavailable"
 
@@ -869,13 +1058,21 @@ def report_data(fixture):
 
 
 def generate_article(
-    fixtures, mode, target, context, avoid
+    fixtures,
+    mode,
+    target,
+    context,
+    avoid
 ):
-    key = st.secrets.get("GEMINI_API_KEY", "")
+    key = st.secrets.get(
+        "GEMINI_API_KEY",
+        ""
+    )
 
     if not key:
         raise RuntimeError(
-            "GEMINI_API_KEY is missing from Streamlit Secrets."
+            "GEMINI_API_KEY is missing "
+            "from Streamlit Secrets."
         )
 
     data = [
@@ -883,7 +1080,9 @@ def generate_article(
         for fixture in fixtures
     ]
 
-    client = genai.Client(api_key=key)
+    client = genai.Client(
+        api_key=key
+    )
 
     prompt = f"""
 You are the cricket reporter for Hawthorn Boroondara
@@ -903,6 +1102,7 @@ For a Weekend Report:
 - Create a cohesive club-wide narrative.
 
 Only use supplied facts.
+
 Never invent results, statistics, quotes,
 partnerships, pitch conditions, weather,
 tactics, player identities or injuries.
@@ -930,16 +1130,21 @@ Return only the complete finished article.
     ):
         for attempt in range(2):
             try:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.35,
-                        max_output_tokens=6500
+                response = (
+                    client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.35,
+                            max_output_tokens=6500
+                        )
                     )
                 )
 
-                if response.text and response.text.strip():
+                if (
+                    response.text
+                    and response.text.strip()
+                ):
                     return response.text.strip()
 
             except Exception as error:
@@ -949,11 +1154,15 @@ Return only the complete finished article.
                 if any(
                     term in message
                     for term in (
-                        "429", "503", "unavailable",
+                        "429",
+                        "503",
+                        "unavailable",
                         "resource_exhausted"
                     )
                 ):
-                    time.sleep(2 + attempt * 2)
+                    time.sleep(
+                        2 + attempt * 2
+                    )
                     continue
 
                 if (
@@ -965,7 +1174,8 @@ Return only the complete finished article.
                 raise
 
     raise RuntimeError(
-        f"Gemini could not generate the article: {last_error}"
+        "Gemini could not generate the article: "
+        f"{last_error}"
     )
 
 
@@ -1002,11 +1212,13 @@ def reset_results():
 # ============================================================
 
 with st.sidebar:
-    st.header("⚙️ Advanced settings")
+    st.header("Advanced settings")
 
     additional = st.text_area(
         "Additional grades",
-        placeholder="Grade name | GRADE_ID | TEAM_ID",
+        placeholder=(
+            "Grade name | GRADE_ID | TEAM_ID"
+        ),
         height=100
     )
 
@@ -1017,19 +1229,28 @@ with st.sidebar:
 
     manual_urls = st.text_area(
         "Manual PlayCricket match links",
-        placeholder="https://play.cricket.com.au/match/...",
+        placeholder=(
+            "https://play.cricket.com.au/match/..."
+        ),
         height=100
     )
 
-    if st.button("Clear PlayCricket cache"):
+    if st.button(
+        "Clear PlayCricket cache"
+    ):
         st.cache_data.clear()
-        st.success("Cache cleared")
+        st.success(
+            "Cache cleared"
+        )
 
 
 all_grades = dict(GRADES)
 
 for line in additional.splitlines():
-    parts = [x.strip() for x in line.split("|")]
+    parts = [
+        x.strip()
+        for x in line.split("|")
+    ]
 
     if (
         len(parts) == 3
@@ -1037,7 +1258,8 @@ for line in additional.splitlines():
         and UUID.fullmatch(parts[2])
     ):
         all_grades[parts[0]] = (
-            parts[1], parts[2]
+            parts[1],
+            parts[2]
         )
 
 
@@ -1057,6 +1279,7 @@ st.markdown(
 )
 
 stage = st.session_state.workflow
+
 steps = [
     ("setup", "01 · Setup"),
     ("review", "02 · Review Fixtures"),
@@ -1065,9 +1288,17 @@ steps = [
 
 columns = st.columns(3)
 
-for column, (step_key, label) in zip(columns, steps):
+for column, (step_key, label) in zip(
+    columns,
+    steps
+):
     with column:
-        active = " active" if stage == step_key else ""
+        active = (
+            " active"
+            if stage == step_key
+            else ""
+        )
+
         st.markdown(
             f'<div class="hbcc-step{active}">'
             f'{label}</div>',
@@ -1080,7 +1311,9 @@ for column, (step_key, label) in zip(columns, steps):
 # ============================================================
 
 if stage == "setup":
-    st.markdown("### What are you creating?")
+    st.markdown(
+        "### What are you creating?"
+    )
 
     modes = [
         "Match Report",
@@ -1088,50 +1321,74 @@ if stage == "setup":
         "Team Selections"
     ]
 
-    mode_icons = {
-        "Match Report": "📝",
-        "Weekend Report": "📰",
-        "Team Selections": "👥"
-    }
-
     mode_descriptions = {
-        "Match Report": "One match, one complete article",
-        "Weekend Report": "All the weekend action",
-        "Team Selections": "Published players across grades"
+        "Match Report": (
+            "One match, one complete article"
+        ),
+        "Weekend Report": (
+            "All the weekend action"
+        ),
+        "Team Selections": (
+            "Published players across grades"
+        )
     }
 
     mode_columns = st.columns(3)
 
-    for column, option in zip(mode_columns, modes):
+    for column, option in zip(
+        mode_columns,
+        modes
+    ):
         with column:
-            with st.container(border=True):
+            with st.container(
+                border=True
+            ):
                 st.markdown(
-                    f"### {mode_icons[option]}"
+                    f"**{option}**"
                 )
-                st.markdown(f"**{option}**")
-                st.caption(mode_descriptions[option])
+
+                st.caption(
+                    mode_descriptions[option]
+                )
 
                 selected = (
-                    st.session_state.content_mode == option
+                    st.session_state.content_mode
+                    == option
                 )
 
                 if st.button(
-                    "✓ Selected" if selected else "Choose",
+                    (
+                        "Selected"
+                        if selected
+                        else "Choose"
+                    ),
                     key="mode_" + option,
-                    type="primary" if selected else "secondary",
+                    type=(
+                        "primary"
+                        if selected
+                        else "secondary"
+                    ),
                     use_container_width=True
                 ):
-                    st.session_state.content_mode = option
+                    st.session_state.content_mode = (
+                        option
+                    )
+
                     st.rerun()
 
     mode = st.session_state.content_mode
 
     st.divider()
 
-    left, right = st.columns(2, gap="large")
+    left, right = st.columns(
+        2,
+        gap="large"
+    )
 
     with left:
-        st.markdown("#### 📅 When are the matches?")
+        st.markdown(
+            "#### When are the matches?"
+        )
 
         default_date = (
             "This Weekend"
@@ -1151,12 +1408,16 @@ if stage == "setup":
         )
 
         today = date.today()
+
         days_until_saturday = (
             5 - today.weekday()
         ) % 7
 
-        this_saturday = today + timedelta(
-            days=days_until_saturday
+        this_saturday = (
+            today
+            + timedelta(
+                days=days_until_saturday
+            )
         )
 
         dates = set()
@@ -1164,22 +1425,31 @@ if stage == "setup":
         if date_choice == "This Weekend":
             dates = {
                 this_saturday,
-                this_saturday + timedelta(days=1)
+                this_saturday + timedelta(
+                    days=1
+                )
             }
 
         elif date_choice == "Last Weekend":
-            saturday = this_saturday - timedelta(
-                days=7
+            saturday = (
+                this_saturday
+                - timedelta(days=7)
             )
+
             dates = {
                 saturday,
-                saturday + timedelta(days=1)
+                saturday + timedelta(
+                    days=1
+                )
             }
 
         else:
             method = st.radio(
                 "Choose date method",
-                ["Date range", "Individual dates"],
+                [
+                    "Date range",
+                    "Individual dates"
+                ],
                 horizontal=True
             )
 
@@ -1188,25 +1458,38 @@ if stage == "setup":
                     "Date range",
                     value=(
                         today,
-                        today + timedelta(days=1)
+                        today + timedelta(
+                            days=1
+                        )
                     )
                 )
 
                 if (
-                    isinstance(selected, (tuple, list))
+                    isinstance(
+                        selected,
+                        (tuple, list)
+                    )
                     and len(selected) == 2
                 ):
                     start, end = selected
-                    days = (end - start).days
+                    days = (
+                        end - start
+                    ).days
 
                     if 0 <= days <= 45:
                         dates = {
-                            start + timedelta(days=i)
-                            for i in range(days + 1)
+                            start + timedelta(
+                                days=i
+                            )
+                            for i in range(
+                                days + 1
+                            )
                         }
+
                     else:
                         st.warning(
-                            "Choose a range of 46 days or less."
+                            "Choose a range "
+                            "of 46 days or less."
                         )
 
             else:
@@ -1221,8 +1504,15 @@ if stage == "setup":
                     dates.add(
                         st.date_input(
                             f"Date {i + 1}",
-                            value=today + timedelta(days=i),
-                            key=f"individual_date_{i}"
+                            value=(
+                                today
+                                + timedelta(
+                                    days=i
+                                )
+                            ),
+                            key=(
+                                f"individual_date_{i}"
+                            )
                         )
                     )
 
@@ -1231,16 +1521,23 @@ if stage == "setup":
             last = max(dates)
 
             st.info(
-                "📅 "
-                + first.strftime("%d %B %Y")
+                first.strftime(
+                    "%d %B %Y"
+                )
                 + (
-                    " – " + last.strftime("%d %B %Y")
-                    if last != first else ""
+                    " – "
+                    + last.strftime(
+                        "%d %B %Y"
+                    )
+                    if last != first
+                    else ""
                 )
             )
 
     with right:
-        st.markdown("#### 🏏 Which teams?")
+        st.markdown(
+            "#### Which teams?"
+        )
 
         grade_choice = st.segmented_control(
             "Grade filter",
@@ -1255,24 +1552,29 @@ if stage == "setup":
         )
 
         if grade_choice == "All":
-            selected_grades = list(all_grades)
+            selected_grades = list(
+                all_grades
+            )
 
         elif grade_choice == "Men's":
             selected_grades = [
-                grade for grade in all_grades
+                grade
+                for grade in all_grades
                 if "men's" in grade.lower()
                 and "women's" not in grade.lower()
             ]
 
         elif grade_choice == "Women's":
             selected_grades = [
-                grade for grade in all_grades
+                grade
+                for grade in all_grades
                 if "women's" in grade.lower()
             ]
 
         elif grade_choice == "All Abilities":
             selected_grades = [
-                grade for grade in all_grades
+                grade
+                for grade in all_grades
                 if "all abilities" in grade.lower()
             ]
 
@@ -1284,40 +1586,58 @@ if stage == "setup":
             )
 
         st.info(
-            f"🏏 {len(selected_grades)} teams selected"
+            f"{len(selected_grades)} "
+            "teams selected"
         )
 
-        with st.expander("View selected teams"):
+        with st.expander(
+            "View selected teams"
+        ):
             for grade in selected_grades:
-                st.write("✓", grade)
+                st.write(
+                    grade
+                )
 
     st.divider()
 
     if st.button(
-        "🔎 Find Matches →",
+        "Find Matches",
         type="primary",
         use_container_width=True,
-        disabled=not dates or not selected_grades
+        disabled=(
+            not dates
+            or not selected_grades
+        )
     ):
         found = {}
         diagnostics = []
         samples = []
 
         with st.spinner(
-            "Searching PlayCricket for HBCC fixtures..."
+            "Searching PlayCricket "
+            "for HBCC fixtures..."
         ):
             for grade in selected_grades:
-                grade_id, team_id = all_grades[grade]
+                grade_id, team_id = (
+                    all_grades[grade]
+                )
 
                 try:
-                    payload = grade_matches(grade_id)
-                    records = collect_matches(payload)
+                    payload = grade_matches(
+                        grade_id
+                    )
+
+                    records = collect_matches(
+                        payload
+                    )
 
                     if records:
                         samples.append({
                             "grade": grade,
-                            "matchSchedule": records[0].get(
-                                "matchSchedule"
+                            "matchSchedule": (
+                                records[0].get(
+                                    "matchSchedule"
+                                )
                             )
                         })
 
@@ -1330,66 +1650,100 @@ if stage == "setup":
                     }
 
                     for record in records:
-                        mid = match_id(record)
+                        mid = match_id(
+                            record
+                        )
 
                         if not mid:
                             continue
 
-                        # Preserve matchSchedule parsing.
                         when = (
                             parse_date(
-                                record.get("matchSchedule")
+                                record.get(
+                                    "matchSchedule"
+                                )
                             )
-                            or parse_date(record)
+                            or parse_date(
+                                record
+                            )
                         )
 
                         detail = None
 
                         if not when:
                             try:
-                                detail = match_detail(mid)
+                                detail = (
+                                    match_detail(
+                                        mid
+                                    )
+                                )
+
                                 when = (
                                     parse_date(
-                                        detail.get("matchSummary")
+                                        detail.get(
+                                            "matchSummary"
+                                        )
                                     )
-                                    or parse_date(detail)
+                                    or parse_date(
+                                        detail
+                                    )
                                 )
+
                             except Exception:
                                 pass
 
                         if not when:
-                            stats["without_date"] += 1
+                            stats[
+                                "without_date"
+                            ] += 1
                             continue
 
                         if when not in dates:
-                            stats["outside_dates"] += 1
+                            stats[
+                                "outside_dates"
+                            ] += 1
                             continue
 
                         teams = (
-                            teams_of(record)
+                            teams_of(
+                                record
+                            )
                             or teams_of(
-                                (detail or {}).get(
+                                (
+                                    detail
+                                    or {}
+                                ).get(
                                     "matchSummary"
                                 )
                             )
                         )
 
                         if teams and not any(
-                            hbcc_team(team, team_id)
+                            hbcc_team(
+                                team,
+                                team_id
+                            )
                             for team in teams
                         ):
                             continue
 
                         if mid not in found:
-                            found[mid] = fixture_from(
-                                record,
-                                grade,
-                                team_id,
-                                detail
+                            found[mid] = (
+                                fixture_from(
+                                    record,
+                                    grade,
+                                    team_id,
+                                    detail
+                                )
                             )
-                            stats["matched"] += 1
 
-                    diagnostics.append(stats)
+                            stats[
+                                "matched"
+                            ] += 1
+
+                    diagnostics.append(
+                        stats
+                    )
 
                 except Exception as error:
                     diagnostics.append({
@@ -1397,24 +1751,37 @@ if stage == "setup":
                         "error": str(error)
                     })
 
-            # Manual match links
-            for mid in manual_ids(manual_urls):
+            for mid in manual_ids(
+                manual_urls
+            ):
                 if mid in found:
                     continue
 
                 try:
-                    detail = match_detail(mid)
-                    summary = (
-                        detail.get("matchSummary") or {}
+                    detail = match_detail(
+                        mid
                     )
+
+                    summary = (
+                        detail.get(
+                            "matchSummary"
+                        )
+                        or {}
+                    )
+
                     teams = (
-                        teams_of(summary)
-                        or teams_of(detail)
+                        teams_of(
+                            summary
+                        )
+                        or teams_of(
+                            detail
+                        )
                     )
 
                     grade = next(
                         (
-                            g for g in selected_grades
+                            g
+                            for g in selected_grades
                             if any(
                                 hbcc_team(
                                     team,
@@ -1426,14 +1793,19 @@ if stage == "setup":
                         selected_grades[0]
                     )
 
-                    record = dict(summary or detail)
+                    record = dict(
+                        summary or detail
+                    )
+
                     record["id"] = mid
 
-                    found[mid] = fixture_from(
-                        record,
-                        grade,
-                        all_grades[grade][1],
-                        detail
+                    found[mid] = (
+                        fixture_from(
+                            record,
+                            grade,
+                            all_grades[grade][1],
+                            detail
+                        )
                     )
 
                 except Exception as error:
@@ -1445,24 +1817,36 @@ if stage == "setup":
         st.session_state.fixtures = sorted(
             found.values(),
             key=lambda x: (
-                x["date"], x["grade"]
+                x["date"],
+                x["grade"]
             )
         )
 
         st.session_state.selected_fixture_ids = [
             fixture["id"]
-            for fixture in st.session_state.fixtures
+            for fixture in (
+                st.session_state.fixtures
+            )
         ]
 
-        st.session_state.diagnostics = diagnostics
-        st.session_state.schedule_samples = samples
+        st.session_state.diagnostics = (
+            diagnostics
+        )
+
+        st.session_state.schedule_samples = (
+            samples
+        )
+
         st.session_state.selection_rows = []
         st.session_state.article = ""
         st.session_state.workflow = "review"
 
-        # Clear old fixture checkbox values.
-        for key in list(st.session_state):
-            if key.startswith("match_checkbox_"):
+        for key in list(
+            st.session_state
+        ):
+            if key.startswith(
+                "match_checkbox_"
+            ):
                 del st.session_state[key]
 
         st.rerun()
@@ -1473,25 +1857,39 @@ if stage == "setup":
 # ============================================================
 
 elif stage == "review":
-    if st.button("← Back to setup"):
-        st.session_state.workflow = "setup"
+    if st.button(
+        "Back to setup"
+    ):
+        st.session_state.workflow = (
+            "setup"
+        )
+
         st.rerun()
 
-    st.markdown("### Review your matches")
+    st.markdown(
+        "### Review your matches"
+    )
 
-    fixtures = st.session_state.fixtures
+    fixtures = (
+        st.session_state.fixtures
+    )
 
     if not fixtures:
         st.warning(
-            "No matches found for those dates and teams."
+            "No matches found for "
+            "those dates and teams."
         )
+
         st.caption(
-            "Try another date range or add a manual "
-            "PlayCricket match link in Advanced settings."
+            "Try another date range "
+            "or add a manual PlayCricket "
+            "match link in Advanced settings."
         )
 
     else:
-        metric1, metric2, metric3 = st.columns(3)
+        metric1, metric2, metric3 = (
+            st.columns(3)
+        )
 
         metric1.metric(
             "Fixtures found",
@@ -1501,16 +1899,21 @@ elif stage == "review":
         metric2.metric(
             "Grades",
             len({
-                f["grade"] for f in fixtures
+                f["grade"]
+                for f in fixtures
             })
         )
 
         metric3.metric(
             "Selected",
-            len(st.session_state.selected_fixture_ids)
+            len(
+                st.session_state.selected_fixture_ids
+            )
         )
 
-        col1, col2, _ = st.columns([1, 1, 3])
+        col1, col2, _ = st.columns(
+            [1, 1, 3]
+        )
 
         with col1:
             if st.button(
@@ -1518,12 +1921,14 @@ elif stage == "review":
                 use_container_width=True
             ):
                 st.session_state.selected_fixture_ids = [
-                    f["id"] for f in fixtures
+                    f["id"]
+                    for f in fixtures
                 ]
 
                 for f in fixtures:
                     st.session_state[
-                        "match_checkbox_" + f["id"]
+                        "match_checkbox_"
+                        + f["id"]
                     ] = True
 
                 st.rerun()
@@ -1537,54 +1942,68 @@ elif stage == "review":
 
                 for f in fixtures:
                     st.session_state[
-                        "match_checkbox_" + f["id"]
+                        "match_checkbox_"
+                        + f["id"]
                     ] = False
 
                 st.rerun()
 
-        # Group fixture cards by grade.
         for grade in dict.fromkeys(
-            f["grade"] for f in fixtures
+            f["grade"]
+            for f in fixtures
         ):
-            st.markdown(f"#### {grade}")
+            st.markdown(
+                f"#### {grade}"
+            )
 
             grade_fixtures = [
-                f for f in fixtures
+                f
+                for f in fixtures
                 if f["grade"] == grade
             ]
 
             for fixture in grade_fixtures:
                 mid = fixture["id"]
-                key = "match_checkbox_" + mid
+                key = (
+                    "match_checkbox_"
+                    + mid
+                )
 
-                with st.container(border=True):
-                    col, status_col = st.columns(
-                        [5, 1]
+                with st.container(
+                    border=True
+                ):
+                    col, status_col = (
+                        st.columns(
+                            [5, 1]
+                        )
                     )
 
                     with col:
-                        checked = st.checkbox(
-                            fixture["name"],
-                            value=(
-                                mid in
-                                st.session_state.selected_fixture_ids
-                            ),
-                            key=key
+                        checked = (
+                            st.checkbox(
+                                fixture["name"],
+                                value=(
+                                    mid in
+                                    st.session_state.selected_fixture_ids
+                                ),
+                                key=key
+                            )
                         )
 
                         st.caption(
-                            f"📅 {fixture['date']} · "
-                            f"📍 {fixture['venue'] or 'Venue unavailable'}"
+                            f"{fixture['date']} · "
+                            f"{fixture['venue'] or 'Venue unavailable'}"
                         )
 
                         st.markdown(
-                            f"[Open PlayCricket ↗]"
+                            f"[Open PlayCricket]"
                             f"({fixture['url']})"
                         )
 
                     with status_col:
                         st.caption(
-                            fixture["status"] or "Fixture"
+                            fixture["status"]
+                            or "Fixture"
                         )
 
                     if (
@@ -1608,12 +2027,17 @@ elif stage == "review":
         st.divider()
 
         if st.button(
-            "Continue to Create Content →",
+            "Continue to Create Content",
             type="primary",
             use_container_width=True,
-            disabled=not st.session_state.selected_fixture_ids
+            disabled=(
+                not st.session_state.selected_fixture_ids
+            )
         ):
-            st.session_state.workflow = "export"
+            st.session_state.workflow = (
+                "export"
+            )
+
             st.rerun()
 
 
@@ -1622,50 +2046,71 @@ elif stage == "review":
 # ============================================================
 
 else:
-    if st.button("← Back to fixtures"):
-        st.session_state.workflow = "review"
+    if st.button(
+        "Back to fixtures"
+    ):
+        st.session_state.workflow = (
+            "review"
+        )
+
         st.rerun()
 
     chosen = [
         fixture
-        for fixture in st.session_state.fixtures
+        for fixture in (
+            st.session_state.fixtures
+        )
         if fixture["id"]
         in st.session_state.selected_fixture_ids
     ]
 
-    mode = st.session_state.content_mode
+    mode = (
+        st.session_state.content_mode
+    )
 
-    st.markdown(f"### {mode}")
+    st.markdown(
+        f"### {mode}"
+    )
+
     st.caption(
         f"{len(chosen)} match(es) selected"
     )
 
-    # --------------------------------------------------------
-    # MATCH REPORT / WEEKEND REPORT
-    # --------------------------------------------------------
-
-    if mode in ("Match Report", "Weekend Report"):
-        if mode == "Match Report" and chosen:
+    if mode in (
+        "Match Report",
+        "Weekend Report"
+    ):
+        if (
+            mode == "Match Report"
+            and chosen
+        ):
             picked = st.selectbox(
                 "Match to write about",
                 chosen,
                 format_func=lambda f: (
-                    f"{f['grade']} · {f['name']}"
+                    f"{f['grade']} · "
+                    f"{f['name']}"
                 )
             )
-            report_fixtures = [picked]
+
+            report_fixtures = [
+                picked
+            ]
+
         else:
-            report_fixtures = chosen
+            report_fixtures = (
+                chosen
+            )
 
         with st.expander(
-            "✍️ Writing preferences",
+            "Writing preferences",
             expanded=True
         ):
             context = st.text_area(
                 "Additional context",
                 placeholder=(
-                    "Milestones, debuts, achievements, "
-                    "club events..."
+                    "Milestones, debuts, "
+                    "achievements, club events..."
                 )
             )
 
@@ -1677,23 +2122,31 @@ else:
             length = st.select_slider(
                 "Approximate article length",
                 options=[
-                    300, 500, 700, 1000, 1500
+                    300,
+                    500,
+                    700,
+                    1000,
+                    1500
                 ],
                 value=(
-                    500 if mode == "Match Report"
+                    500
+                    if mode == "Match Report"
                     else 1000
                 )
             )
 
         if st.button(
-            "✨ Generate " + mode,
+            "Generate " + mode,
             type="primary",
             use_container_width=True,
-            disabled=not report_fixtures
+            disabled=(
+                not report_fixtures
+            )
         ):
             try:
                 with st.spinner(
-                    "Reading scorecards and writing..."
+                    "Reading scorecards "
+                    "and writing..."
                 ):
                     st.session_state.article = (
                         generate_article(
@@ -1707,11 +2160,14 @@ else:
 
             except Exception as error:
                 st.error(
-                    f"Unable to generate article: {error}"
+                    "Unable to generate article: "
+                    f"{error}"
                 )
 
         if st.session_state.article:
-            st.success("Article ready for review")
+            st.success(
+                "Article ready for review"
+            )
 
             st.markdown(
                 st.session_state.article
@@ -1727,7 +2183,7 @@ else:
                 )
 
             st.download_button(
-                "⬇ Download article",
+                "Download article",
                 st.session_state.article,
                 "hbcc_report.txt",
                 "text/plain",
@@ -1739,13 +2195,9 @@ else:
                 "before publishing."
             )
 
-    # --------------------------------------------------------
-    # TEAM SELECTIONS
-    # --------------------------------------------------------
-
     else:
         if st.button(
-            "👥 Retrieve Selected Teams",
+            "Retrieve Selected Teams",
             type="primary",
             use_container_width=True,
             disabled=not chosen
@@ -1756,7 +2208,10 @@ else:
                 "Retrieving published team lists..."
             ):
                 for fixture in chosen:
-                    row = dict(fixture)
+                    row = dict(
+                        fixture
+                    )
+
                     row["candidates"] = []
                     row["error"] = ""
 
@@ -1777,27 +2232,39 @@ else:
                             or venue_of(
                                 detail.get(
                                     "matchSummary"
-                                ) or {}
+                                )
+                                or {}
                             )
                         )
 
                     except Exception as error:
-                        row["error"] = str(error)
+                        row["error"] = (
+                            str(error)
+                        )
 
-                    rows.append(row)
+                    rows.append(
+                        row
+                    )
 
-            st.session_state.selection_rows = rows
+            st.session_state.selection_rows = (
+                rows
+            )
 
         if st.session_state.selection_rows:
             edited_rows = []
             total_players = 0
 
-            for row in st.session_state.selection_rows:
+            for row in (
+                st.session_state.selection_rows
+            ):
                 mid = row["id"]
-                candidates = row["candidates"]
+                candidates = (
+                    row["candidates"]
+                )
 
                 with st.expander(
-                    f"{row['grade']} · {row['name']}",
+                    f"{row['grade']} · "
+                    f"{row['name']}",
                     expanded=(
                         len(
                             st.session_state.selection_rows
@@ -1805,27 +2272,43 @@ else:
                     )
                 ):
                     st.caption(
-                        f"📅 {row['date']} · "
-                        f"📍 {row['venue'] or 'Venue unavailable'}"
+                        f"{row['date']} · "
+                        f"{row['venue'] or 'Venue unavailable'}"
                     )
 
                     if row["error"]:
-                        st.error(row["error"])
-
-                    if candidates:
-                        selected = st.selectbox(
-                            "Team list source",
-                            list(range(len(candidates))),
-                            format_func=lambda i: (
-                                f"{len(candidates[i]['players'])} "
-                                f"players · "
-                                f"{candidates[i]['source']}"
-                            ),
-                            key="source_" + mid
+                        st.error(
+                            row["error"]
                         )
 
-                        candidate = candidates[selected]
-                        source_players = candidate["players"]
+                    if candidates:
+                        selected = (
+                            st.selectbox(
+                                "Team list source",
+                                list(
+                                    range(
+                                        len(candidates)
+                                    )
+                                ),
+                                format_func=lambda i: (
+                                    f"{len(candidates[i]['players'])} "
+                                    f"players · "
+                                    f"{candidates[i]['source']}"
+                                ),
+                                key=(
+                                    "source_"
+                                    + mid
+                                )
+                            )
+                        )
+
+                        candidate = (
+                            candidates[selected]
+                        )
+
+                        source_players = (
+                            candidate["players"]
+                        )
 
                         if not candidate["explicit"]:
                             st.caption(
@@ -1852,21 +2335,37 @@ else:
                             "when published."
                         )
 
-                    edit_key = "player_edit_" + mid
-                    source_key = "player_source_" + mid
+                    edit_key = (
+                        "player_edit_"
+                        + mid
+                    )
 
-                    signature = tuple(source_players)
+                    source_key = (
+                        "player_source_"
+                        + mid
+                    )
+
+                    signature = tuple(
+                        source_players
+                    )
 
                     if (
-                        st.session_state.get(source_key)
+                        st.session_state.get(
+                            source_key
+                        )
                         != signature
                     ):
-                        st.session_state[edit_key] = (
-                            "\n".join(source_players)
+                        st.session_state[
+                            edit_key
+                        ] = (
+                            "\n".join(
+                                source_players
+                            )
                         )
-                        st.session_state[source_key] = (
-                            signature
-                        )
+
+                        st.session_state[
+                            source_key
+                        ] = signature
 
                     raw = st.text_area(
                         "Published players "
@@ -1874,17 +2373,23 @@ else:
                         key=edit_key,
                         height=max(
                             260,
-                            len(source_players) * 28 + 55
+                            len(
+                                source_players
+                            ) * 28 + 55
                         )
                     )
 
                     players = [
                         player.strip()
-                        for player in raw.splitlines()
+                        for player in (
+                            raw.splitlines()
+                        )
                         if player.strip()
                     ]
 
-                    total_players += len(players)
+                    total_players += (
+                        len(players)
+                    )
 
                     st.caption(
                         f"{len(players)} players · "
@@ -1893,7 +2398,7 @@ else:
                     )
 
                     with st.expander(
-                        "Technical · Player list sources"
+                        "Technical player list sources"
                     ):
                         st.json([
                             {
@@ -1908,10 +2413,14 @@ else:
                         "players": players
                     })
 
-            # Combined announcement
-            output = selection_output(edited_rows)
+            output = (
+                selection_output(
+                    edited_rows
+                )
+            )
 
             st.divider()
+
             st.markdown(
                 "### Combined Team Announcement"
             )
@@ -1921,7 +2430,6 @@ else:
                 f"{total_players} players"
             )
 
-            # Complete preview without internal scrolling.
             st.code(
                 output,
                 language=None,
@@ -1934,14 +2442,16 @@ else:
                 if (
                     st.session_state.get(
                         "combined_source"
-                    ) != output
+                    )
+                    != output
                 ):
-                    st.session_state["combined_edit"] = (
-                        output
-                    )
-                    st.session_state["combined_source"] = (
-                        output
-                    )
+                    st.session_state[
+                        "combined_edit"
+                    ] = output
+
+                    st.session_state[
+                        "combined_source"
+                    ] = output
 
                 st.text_area(
                     "Copy-ready selections",
@@ -1950,9 +2460,10 @@ else:
                 )
 
             st.download_button(
-                "⬇ Download Team Selections",
+                "Download Team Selections",
                 st.session_state.get(
-                    "combined_edit", output
+                    "combined_edit",
+                    output
                 ),
                 "hbcc_team_selections.txt",
                 "text/plain",
@@ -1976,6 +2487,7 @@ if st.session_state.diagnostics:
         st.json(
             st.session_state.diagnostics
         )
+
         st.json(
             st.session_state.schedule_samples
         )
