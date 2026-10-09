@@ -162,31 +162,18 @@ def get_name(obj):
 def parse_date(value):
     if isinstance(value, (int, float)):
         try:
-            timestamp = (
-                value / 1000
-                if value > 1e11
-                else value
-            )
-
+            timestamp = value / 1000 if value > 1e11 else value
             return datetime.fromtimestamp(
-                timestamp,
-                tz=timezone.utc
+                timestamp, tz=timezone.utc
             ).date()
-
         except (ValueError, OverflowError, OSError):
             return None
 
     if isinstance(value, str):
-        match = re.search(
-            r"\d{4}-\d{2}-\d{2}",
-            value
-        )
-
+        match = re.search(r"\d{4}-\d{2}-\d{2}", value)
         if match:
             try:
-                return date.fromisoformat(
-                    match.group()
-                )
+                return date.fromisoformat(match.group())
             except ValueError:
                 return None
 
@@ -199,13 +186,33 @@ def parse_date(value):
             "scheduledStart",
             "scheduledDate",
             "startTime",
-            "start"
+            "start",
+            "startDateTimeUtc",
+            "matchStartDateTime",
+            "matchStartDate",
+            "firstDay",
+            "matchDay",
+            "days",
+            "dates",
+            "matchSchedule"
         ):
             if key in value:
                 result = parse_date(value[key])
-
                 if result:
                     return result
+
+        # Some API responses wrap dates in other objects.
+        for nested in value.values():
+            if isinstance(nested, (dict, list)):
+                result = parse_date(nested)
+                if result:
+                    return result
+
+    if isinstance(value, list):
+        for item in value:
+            result = parse_date(item)
+            if result:
+                return result
 
     return None
 
