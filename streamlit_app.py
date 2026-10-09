@@ -1875,30 +1875,7 @@ if stage == "setup":
 # ============================================================
 
 elif stage == "review":
-    heading_col, back_col = st.columns(
-        [4, 1],
-        vertical_alignment="center"
-    )
-
-    with heading_col:
-        st.markdown("### Review your matches")
-
-    with back_col:
-        st.markdown(
-            "<div style='height: 8px;'></div>",
-            unsafe_allow_html=True
-        )
-    
-        if st.button(
-            "Back to setup",
-            use_container_width=True
-        ):
-            st.session_state.workflow = "setup"
-            st.rerun()
-
-            st.session_state.workflow = "setup"
-            st.rerun()
-
+    st.markdown("### Review your matches")
 
     fixtures = (
         st.session_state.fixtures
