@@ -1863,18 +1863,22 @@ if stage == "setup":
 # ============================================================
 
 elif stage == "review":
-    if st.button(
-        "Back to setup"
-    ):
-        st.session_state.workflow = (
-            "setup"
-        )
-
-        st.rerun()
-
-    st.markdown(
-        "### Review your matches"
+    heading_col, back_col = st.columns(
+        [4, 1],
+        vertical_alignment="center"
     )
+
+    with heading_col:
+        st.markdown("### Review your matches")
+
+    with back_col:
+        if st.button(
+            "Back to setup",
+            use_container_width=True
+        ):
+            st.session_state.workflow = "setup"
+            st.rerun()
+
 
     fixtures = (
         st.session_state.fixtures
