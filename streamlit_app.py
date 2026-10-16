@@ -1912,6 +1912,38 @@ if stage == "setup":
         st.rerun()
 
 
+# Temporary Men's 3rd XI API diagnostic
+with st.expander("Debug Men's 3rd XI fixtures"):
+    grade_id = "5e75167c-a2b6-49e4-8e3e-ee308a415204"
+    target_id = "e41ba1f9-3c97-4811-8a56-8fe21bb817b2"
+
+    try:
+        data = grade_matches(grade_id)
+
+        if isinstance(data, dict):
+            matches = data.get("matches", [])
+        elif isinstance(data, list):
+            matches = data
+        else:
+            matches = []
+
+        st.write("Matches returned:", len(matches))
+
+        found = [
+            match for match in matches
+            if target_id in str(match)
+        ]
+
+        if found:
+            st.success("Missing 3rd XI match found in API")
+            st.json(found[0])
+        else:
+            st.warning("Match not found in grade API response")
+
+    except Exception as error:
+        st.error(f"API diagnostic failed: {error}")
+
+
 # ============================================================
 # STEP 2 — REVIEW FIXTURES
 # ============================================================
