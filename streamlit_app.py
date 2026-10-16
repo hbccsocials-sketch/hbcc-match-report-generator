@@ -920,6 +920,43 @@ def selection_output(rows):
     return "\n".join(lines)
 
 
+def card_copy_parts(row):
+    """Build copy-ready Canva text using the *edited* player list."""
+    grade = str(row.get("grade") or "Team").upper()
+    fixture = str(row.get("name") or "")
+    parts = re.split(r"\s+vs\.?\s+", fixture, maxsplit=1, flags=re.I)
+    if len(parts) == 2:
+        left, right = (part.strip() for part in parts)
+        # PlayCricket can list HBCC as either home or away.
+        if "hawthorn boroondara" in left.lower() and "hawthorn boroondara" not in right.lower():
+            opponent = right
+        elif "hawthorn boroondara" in right.lower() and "hawthorn boroondara" not in left.lower():
+            opponent = left
+        else:
+            opponent = right
+        match_line = f"vs {opponent}"
+    else:
+        match_line = fixture or "Opponent unavailable"
+
+    playing_dates = row.get("playing_dates") or []
+    date_line = " & ".join(playing_dates) if playing_dates else str(row.get("date") or "Date unavailable")
+    venue_line = str(row.get("venue") or "Venue unavailable")
+    details = "\n".join([grade, match_line, f"Date: {date_line}", f"Venue: {venue_line}"])
+
+    players = row.get("players") or []
+    if players:
+        # Player edits may contain numbering pasted from elsewhere.
+        player_lines = []
+        for i, player in enumerate(players, 1):
+            clean = re.sub(r"^\s*\d+[.)]\s*", "", str(player)).strip()
+            if clean:
+                player_lines.append(f"{i}. {clean}")
+        player_text = "\n".join(player_lines) or "Selected team coming soon"
+    else:
+        player_text = "Selected team coming soon"
+    return details, player_text, details + "\n\n" + player_text
+
+
 # ============================================================
 # REPORT GENERATION
 # ============================================================
@@ -2505,6 +2542,55 @@ else:
                 selection_output(
                     edited_rows
                 )
+            )
+
+            st.divider()
+
+            st.markdown("### Team Card Copy Layout")
+            st.caption(
+                "One copy-ready card per selected match. "
+                "Use the copy icon in each text block to paste into Canva. "
+                "All cards use your edited player lists."
+            )
+
+            # Display all selected teams, not just the first four.
+            # Keep the configured grade order, then match date.
+            grade_order = {grade: i for i, grade in enumerate(all_grades)}
+            card_rows = sorted(
+                edited_rows,
+                key=lambda row: (
+                    grade_order.get(row.get("grade"), 999),
+                    row.get("date", ""),
+                    row.get("name", "")
+                )
+            )
+            card_columns = st.columns(2, gap="medium")
+            all_card_text = []
+            for index, card_row in enumerate(card_rows):
+                details, player_text, full_card = card_copy_parts(card_row)
+                all_card_text.append(full_card)
+                with card_columns[index % 2]:
+                    with st.container(border=True):
+                        st.markdown(f"**CARD {index + 1} — {card_row['grade'].upper()}**")
+                        full_tab, details_tab, players_tab = st.tabs(
+                            ["Full card", "Match details", "Players only"]
+                        )
+                        with full_tab:
+                            st.code(full_card, language=None, wrap_lines=True)
+                        with details_tab:
+                            st.code(details, language=None, wrap_lines=True)
+                        with players_tab:
+                            st.code(player_text, language=None, wrap_lines=True)
+
+            st.download_button(
+                "Download All Team Cards",
+                data="\n\n".join(
+                    f"{'-' * 36}\nCARD {i + 1}\n{'-' * 36}\n{card}"
+                    for i, card in enumerate(all_card_text)
+                ),
+                file_name="hbcc_team_cards.txt",
+                mime="text/plain",
+                use_container_width=True,
             )
 
             st.divider()
