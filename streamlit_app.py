@@ -338,6 +338,44 @@ def parse_date(value):
     return None
 
 
+def scheduled_match_dates(record):
+    """Return every playing date from PlayCricket's matchSchedule.
+
+    Two-day matches can contain multiple scheduled days in an array. The
+    generic parse_date() helper only returns one, so it cannot be used for
+    weekend inclusion tests.
+    """
+    schedule = record.get("matchSchedule") if isinstance(record, dict) else None
+    found = set()
+
+    def walk(value):
+        if isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, dict):
+            # Try the date-bearing fields of each scheduled day before
+            # descending into nested schedule structures.
+            for key in (
+                "startDateTime", "startDate", "matchDate", "date",
+                "scheduledStart", "scheduledDate", "startTime",
+                "start", "dateTime", "localStartTime", "utcStartTime",
+                "startDateTimeLocal", "days", "dates", "matchSchedule"
+            ):
+                if key in value:
+                    walk(value[key])
+            if all(k in value for k in ("year", "month", "day")):
+                day = parse_date(value)
+                if day:
+                    found.add(day)
+        else:
+            day = parse_date(value)
+            if day:
+                found.add(day)
+
+    walk(schedule)
+    return sorted(found)
+
+
 def match_id(obj):
     if isinstance(obj, dict):
         for key in (
@@ -518,8 +556,10 @@ def fixture_from(record, grade, team_id, detail=None):
     if not isinstance(summary, dict):
         summary = {}
 
+    playing_dates = scheduled_match_dates(record)
     when = (
-        parse_date(record.get("matchSchedule"))
+        playing_dates[0] if playing_dates
+        else parse_date(record.get("matchSchedule"))
         or parse_date(record)
         or parse_date(summary)
     )
@@ -536,6 +576,7 @@ def fixture_from(record, grade, team_id, detail=None):
         "grade": grade,
         "team_id": team_id,
         "date": str(when) if when else "",
+        "playing_dates": [str(day) for day in playing_dates],
         "name": label,
         "venue": (
             venue_of(record)
@@ -1285,45 +1326,6 @@ st.markdown(
 )
 
 
-# ============================================================
-# TEMPORARY DIAGNOSTIC — MEN'S 3RD XI
-# ============================================================
-
-with st.expander("Debug Men's 3rd XI fixtures", expanded=False):
-    debug_grade_id = GRADES["Men's 3rd XI"][0]
-    debug_target_id = "e41ba1f9-3c97-4811-8a56-8fe21bb817b2"
-
-    if st.button("Check Men's 3rd XI API", key="debug_third_xi"):
-        try:
-            debug_payload = grade_matches(debug_grade_id)
-            debug_records = collect_matches(debug_payload)
-            st.write("Matches returned:", len(debug_records))
-
-            debug_found = next(
-                (
-                    record for record in debug_records
-                    if match_id(record) == debug_target_id
-                    or debug_target_id in str(record)
-                ),
-                None
-            )
-
-            if debug_found is not None:
-                st.success("The missing Men's 3rd XI match is in the grade API.")
-                st.write("Match date detected:",
-                         str(parse_date(debug_found.get("matchSchedule"))
-                             or parse_date(debug_found)))
-                st.write("Teams detected:",
-                         [name_of(team) for team in teams_of(debug_found)])
-                st.json(debug_found)
-            else:
-                st.warning("The match ID was not found in the grade API response.")
-                st.caption("The fixture may need a different API source or manual match link.")
-
-        except Exception as error:
-            st.error(f"API diagnostic failed: {error}")
-
-
 stage = st.session_state.workflow
 
 steps = [
@@ -1756,15 +1758,10 @@ if stage == "setup":
                         if not mid:
                             continue
 
+                        playing_dates = scheduled_match_dates(record)
                         when = (
-                            parse_date(
-                                record.get(
-                                    "matchSchedule"
-                                )
-                            )
-                            or parse_date(
-                                record
-                            )
+                            playing_dates[0] if playing_dates
+                            else parse_date(record)
                         )
 
                         detail = None
@@ -1797,7 +1794,9 @@ if stage == "setup":
                             ] += 1
                             continue
 
-                        if when not in dates:
+                        # Include multi-day matches if ANY scheduled
+                        # playing day falls in the selected date range.
+                        if not (set(playing_dates) & dates) and when not in dates:
                             stats[
                                 "outside_dates"
                             ] += 1
@@ -2078,8 +2077,9 @@ elif stage == "review":
                             )
                         )
 
+                        display_dates = fixture.get("playing_dates") or [fixture["date"]]
                         st.caption(
-                            f"{fixture['date']} · "
+                            f"{' & '.join(display_dates)} · "
                             f"{fixture['venue'] or 'Venue unavailable'}"
                         )
 
