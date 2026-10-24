@@ -2682,7 +2682,7 @@ else:
             st.divider()
 
             if st.session_state.team_publish_view == "graphics":
-                st.markdown("#### Instagram graphic generator")
+                st.markdown("#### Instagram Graphic Generator")
                 st.caption(
                     "Each selected team becomes its own 1080 × 1350 Instagram graphic "
                     "using the HBCC background and ITC Franklin Gothic LT Medium. "
