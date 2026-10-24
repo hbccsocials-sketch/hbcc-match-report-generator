@@ -1,5 +1,10 @@
 
 import json
+import io
+import zipfile
+import hmac
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -955,6 +960,145 @@ def card_copy_parts(row):
     else:
         player_text = "Selected team coming soon"
     return details, player_text, details + "\n\n" + player_text
+
+
+# ============================================================
+# INSTAGRAM TEAM GRAPHIC GENERATOR
+# ============================================================
+
+ASSET_DIR = Path(__file__).resolve().parent
+DEFAULT_TEMPLATE = ASSET_DIR / "hbcc_team_template.png"
+DEFAULT_FONT = ASSET_DIR / "ITC Franklin Gothic LT Medium.otf"
+DEFAULT_GRAPHIC_SETTINGS = {
+    "width": 1080, "height": 1350,
+    "left": 84, "top": 77,
+    "title_size": 51, "details_size": 45,
+    "players_size": 45, "line_spacing": 16,
+    "section_gap": 42,
+    "heading_color": "#ffce2c", "players_color": "#ffffff",
+    "max_content_y": 1130,
+}
+
+
+def graphic_settings():
+    if "graphic_settings" not in st.session_state:
+        st.session_state.graphic_settings = dict(DEFAULT_GRAPHIC_SETTINGS)
+    return st.session_state.graphic_settings
+
+
+def image_asset():
+    uploaded = st.session_state.get("graphic_template_bytes")
+    if uploaded:
+        return Image.open(io.BytesIO(uploaded)).convert("RGB")
+    if DEFAULT_TEMPLATE.exists():
+        return Image.open(DEFAULT_TEMPLATE).convert("RGB")
+    return Image.new("RGB", (580, 725), "#0f192d")
+
+
+def font_asset(size):
+    uploaded = st.session_state.get("graphic_font_bytes")
+    if uploaded:
+        try:
+            return ImageFont.truetype(io.BytesIO(uploaded), size=size)
+        except (OSError, ValueError):
+            pass
+    if DEFAULT_FONT.exists():
+        return ImageFont.truetype(str(DEFAULT_FONT), size=size)
+    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "arial.ttf"):
+        try:
+            return ImageFont.truetype(path, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def graphic_opponent(row):
+    name = row.get("name", "")
+    teams = [part.strip() for part in re.split(r"\s+vs\s+", name, flags=re.I)]
+    if len(teams) < 2:
+        return name or "Opponent to be confirmed"
+    opposing = [team for team in teams if "hawthorn boroondara" not in team.lower()]
+    return opposing[0] if opposing else teams[-1]
+
+
+def graphic_date(row):
+    dates = row.get("playing_dates") or [row.get("date", "")]
+    return " & ".join(str(d) for d in dict.fromkeys(d for d in dates if d))
+
+
+def wrap_to_width(draw, text, font, max_width):
+    words = str(text).split()
+    if not words:
+        return [""]
+    lines, current = [], ""
+    for word in words:
+        trial = f"{current} {word}".strip()
+        if current and draw.textbbox((0, 0), trial, font=font)[2] > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = trial
+    if current:
+        lines.append(current)
+    return lines
+
+
+def render_team_graphic(row, settings=None):
+    cfg = dict(settings or graphic_settings())
+    width, height = int(cfg["width"]), int(cfg["height"])
+    image = image_asset().resize((width, height), Image.Resampling.LANCZOS)
+    draw = ImageDraw.Draw(image)
+    left, y = int(cfg["left"]), int(cfg["top"])
+    usable_width = width - left * 2
+    title_font = font_asset(int(cfg["title_size"]))
+    detail_font = font_asset(int(cfg["details_size"]))
+    heading_color = cfg["heading_color"]
+    player_color = cfg["players_color"]
+    spacing = int(cfg["line_spacing"])
+
+    def draw_lines(text, font, color, gap):
+        nonlocal y
+        for line in wrap_to_width(draw, text, font, usable_width):
+            draw.text((left, y), line, font=font, fill=color, stroke_width=0)
+            box = draw.textbbox((0, 0), line or "Ag", font=font)
+            y += box[3] - box[1] + gap
+
+    draw_lines(row.get("grade", "").upper(), title_font, heading_color, spacing // 2)
+    draw_lines("vs " + graphic_opponent(row), detail_font, heading_color, spacing // 2)
+    draw_lines("Date: " + graphic_date(row), detail_font, heading_color, spacing // 2)
+    draw_lines("Venue: " + (row.get("venue") or "To be confirmed"), detail_font, heading_color, spacing // 2)
+    y += int(cfg["section_gap"])
+
+    players = row.get("players") or []
+    numbered = [f"{i}. {re.sub(r'^\\s*\\d+[.)]\\s*', '', str(player)).strip()}" for i, player in enumerate(players, 1)]
+    if not numbered:
+        numbered = ["Selected team coming soon"]
+    max_y = int(cfg["max_content_y"])
+    requested_size = int(cfg["players_size"])
+    # Fit larger squads while retaining the entire list and the footer.
+    for size in range(requested_size, 19, -1):
+        font = font_asset(size)
+        measure_y = y
+        for line in numbered:
+            for part in wrap_to_width(draw, line, font, usable_width):
+                bounds = draw.textbbox((0, 0), part or "Ag", font=font)
+                measure_y += bounds[3] - bounds[1] + max(4, round(spacing * size / requested_size))
+        if measure_y <= max_y:
+            break
+    for line in numbered:
+        draw_lines(line, font, player_color, max(4, round(spacing * size / requested_size)))
+    return image
+
+
+def graphic_png(image):
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue()
+
+
+def graphic_filename(row, index):
+    label = re.sub(r"[^a-z0-9]+", "_", row.get("grade", "team").lower()).strip("_")
+    return f"{index:02d}_{label}_team_selection.png"
 
 
 # ============================================================
@@ -2592,6 +2736,93 @@ else:
                 mime="text/plain",
                 use_container_width=True,
             )
+
+            st.divider()
+            st.markdown("### Instagram Team Graphics")
+            st.caption(
+                "Each selected team becomes its own 1080 × 1350 Instagram graphic "
+                "using the HBCC background and ITC Franklin Gothic LT Medium. "
+                "Your edited player lists and multi-day dates are included."
+            )
+            if not DEFAULT_TEMPLATE.exists() and not st.session_state.get("graphic_template_bytes"):
+                st.warning("Template missing: add hbcc_team_template.png beside streamlit_app.py or upload one in Template Manager.")
+            if not DEFAULT_FONT.exists() and not st.session_state.get("graphic_font_bytes"):
+                st.warning("Club font missing: add your licensed ITC Franklin Gothic LT Medium.otf beside streamlit_app.py or upload it in Template Manager.")
+            graphic_rows = card_rows
+            if graphic_rows:
+                preview_choice = st.selectbox(
+                    "Preview team graphic",
+                    range(len(graphic_rows)),
+                    format_func=lambda i: f"{graphic_rows[i]['grade']} · {graphic_opponent(graphic_rows[i])}",
+                    key="graphic_preview_choice"
+                )
+                preview_row = graphic_rows[preview_choice]
+                preview = render_team_graphic(preview_row)
+                st.image(preview, caption=f"{preview_row['grade']} · Instagram portrait", width=420)
+                st.download_button(
+                    "Download this team's PNG",
+                    data=graphic_png(preview),
+                    file_name=graphic_filename(preview_row, preview_choice + 1),
+                    mime="image/png", use_container_width=True,
+                )
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                    for i, graphic_row in enumerate(graphic_rows, 1):
+                        archive.writestr(
+                            graphic_filename(graphic_row, i),
+                            graphic_png(render_team_graphic(graphic_row))
+                        )
+                st.download_button(
+                    f"Download all {len(graphic_rows)} Instagram graphics (ZIP)",
+                    data=zip_buffer.getvalue(),
+                    file_name="hbcc_instagram_team_selections.zip",
+                    mime="application/zip", use_container_width=True,
+                    type="primary"
+                )
+
+            with st.expander("Template Manager (admin only)"):
+                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
+                if not admin_password:
+                    st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
+                else:
+                    attempt = st.text_input("Admin password", type="password", key="template_admin_password")
+                    if attempt and hmac.compare_digest(attempt, str(admin_password)):
+                        st.success("Template administration unlocked for this session")
+                        st.caption("Changes are applied immediately. Upload a background or font and adjust text placement. Uploads are temporary until you save them to your GitHub repository.")
+                        new_background = st.file_uploader("Replace blank background (PNG)", type=["png"], key="admin_background")
+                        if new_background:
+                            st.session_state.graphic_template_bytes = new_background.getvalue()
+                        new_font = st.file_uploader("Replace font (licensed OTF or TTF)", type=["otf", "ttf"], key="admin_font")
+                        if new_font:
+                            st.session_state.graphic_font_bytes = new_font.getvalue()
+                        new_config = st.file_uploader("Import saved template settings (JSON)", type=["json"], key="admin_settings_import")
+                        if new_config and st.button("Apply imported settings"):
+                            try:
+                                values = json.loads(new_config.getvalue().decode("utf-8"))
+                                if not isinstance(values, dict):
+                                    raise ValueError("Expected JSON object")
+                                st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **{k:v for k,v in values.items() if k in DEFAULT_GRAPHIC_SETTINGS}}
+                                st.rerun()
+                            except (ValueError, UnicodeDecodeError) as exc:
+                                st.error(f"Invalid settings: {exc}")
+                        cfg = graphic_settings()
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            for key, label in [("left", "Left margin"), ("top", "Top margin"), ("title_size", "Grade font size"), ("details_size", "Fixture font size"), ("players_size", "Player font size")]:
+                                cfg[key] = st.number_input(label, min_value=10, max_value=250, value=int(cfg[key]), key="admin_"+key)
+                        with col_b:
+                            for key, label in [("line_spacing", "Line spacing"), ("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
+                                cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
+                            cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
+                            cfg["players_color"] = st.color_picker("Player colour", value=cfg["players_color"], key="admin_players_color")
+                        st.download_button(
+                            "Download template settings (JSON)",
+                            data=json.dumps(cfg, indent=2),
+                            file_name="hbcc_graphic_settings.json", mime="application/json",
+                        )
+                        st.caption("To keep background and font changes after a Streamlit restart, commit hbcc_team_template.png and your licensed font to your private repository. The font is never included in generated PNG ZIP downloads.")
+                    elif attempt:
+                        st.error("Incorrect admin password")
 
             st.divider()
 
