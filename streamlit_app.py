@@ -2547,6 +2547,7 @@ else:
                     st.session_state.pop(prefix + fixture_mid, None)
 
         if st.session_state.selection_rows:
+            team_rows = st.session_state.selection_rows
             edited_rows = []
             total_players = 0
 
