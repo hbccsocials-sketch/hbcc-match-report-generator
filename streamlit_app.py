@@ -974,14 +974,17 @@ DEFAULT_GRAPHIC_SETTINGS = {
     "left": 84, "top": 77,
     "title_size": 51, "details_size": 45,
     "players_size": 45, "line_spacing": 1.3,
-    "yellow_line_spacing": 1.3, "yellow_bold_stroke": 2,
-    "section_gap": 42,
+    "yellow_line_spacing": 1.3, "yellow_bold_stroke": 1,
+    "section_gap": 24,
     "heading_color": "#ffce2c", "players_color": "#ffffff",
     "max_content_y": 1130,
 }
 
 
 def graphic_settings():
+    if st.session_state.get("graphic_settings_version") != 3:
+        st.session_state.graphic_settings = dict(DEFAULT_GRAPHIC_SETTINGS)
+        st.session_state.graphic_settings_version = 3
     if "graphic_settings" not in st.session_state:
         st.session_state.graphic_settings = dict(DEFAULT_GRAPHIC_SETTINGS)
     return st.session_state.graphic_settings
@@ -1045,58 +1048,68 @@ def wrap_to_width(draw, text, font, max_width):
 
 
 def render_team_graphic(row, settings=None):
-    cfg = dict(settings or graphic_settings())
+    """Render fixed-baseline Canva-like typography without runaway spacing."""
+    cfg = dict(DEFAULT_GRAPHIC_SETTINGS)
+    cfg.update(settings or graphic_settings())
     width, height = int(cfg["width"]), int(cfg["height"])
     image = image_asset().resize((width, height), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(image)
     left, y = int(cfg["left"]), int(cfg["top"])
-    usable_width = width - left * 2
-    title_font = font_asset(int(cfg["title_size"]))
-    detail_font = font_asset(int(cfg["details_size"]))
-    heading_color, player_color = cfg["heading_color"], cfg["players_color"]
-    white_multiplier = float(cfg["line_spacing"])
-    yellow_multiplier = float(cfg.get("yellow_line_spacing", 1.3))
-    yellow_stroke = int(cfg.get("yellow_bold_stroke", 2))
+    usable_width = width - left - 65
+    yellow = cfg["heading_color"]
+    white = cfg["players_color"]
+    # 1.3 is a multiplier of FONT SIZE, not font metrics or total image height.
+    # Clamp old session/JSON values to avoid a single bad value spreading names apart.
+    white_spacing = min(1.6, max(1.1, float(cfg.get("line_spacing", 1.3))))
+    yellow_spacing = min(1.6, max(1.1, float(cfg.get("yellow_line_spacing", 1.3))))
+    stroke = min(3, max(0, int(cfg.get("yellow_bold_stroke", 1))))
 
-    def line_height(font, multiplier):
-        # Canva-style line spacing is a multiple of the font's natural line height.
-        # Use consistent metrics instead of per-string bounding boxes, so lines
-        # with descenders do not change the spacing of following lines.
-        try:
-            ascent, descent = font.getmetrics()
-            natural = ascent + descent
-        except AttributeError:
-            natural = font.getbbox("Ag")[3] - font.getbbox("Ag")[1]
-        return max(1, round(natural * multiplier))
-
-    def draw_lines(text, font, color, multiplier, stroke=0):
+    def write_lines(text, font, colour, step, stroke_width=0):
         nonlocal y
-        step = line_height(font, multiplier)
         for line in wrap_to_width(draw, text, font, usable_width):
-            draw.text((left, y), line, font=font, fill=color,
-                      stroke_width=stroke, stroke_fill=color)
+            draw.text((left, y), line, font=font, fill=colour,
+                      stroke_width=stroke_width, stroke_fill=colour)
             y += step
 
-    draw_lines(row.get("grade", "").upper(), title_font, heading_color, yellow_multiplier, yellow_stroke)
-    draw_lines("vs " + graphic_opponent(row), detail_font, heading_color, yellow_multiplier, yellow_stroke)
-    draw_lines("Date: " + graphic_date(row), detail_font, heading_color, yellow_multiplier, yellow_stroke)
-    draw_lines("Venue: " + (row.get("venue") or "To be confirmed"), detail_font, heading_color, yellow_multiplier, yellow_stroke)
+    title_size = int(cfg["title_size"])
+    detail_size = int(cfg["details_size"])
+    title_font = font_asset(title_size)
+    detail_font = font_asset(detail_size)
+    write_lines(str(row.get("grade", "")).upper(), title_font, yellow,
+                round(title_size * yellow_spacing), stroke)
+    for line in (
+        "vs " + graphic_opponent(row),
+        "Date: " + graphic_date(row),
+        "Venue: " + (row.get("venue") or "To be confirmed"),
+    ):
+        write_lines(line, detail_font, yellow,
+                    round(detail_size * yellow_spacing), stroke)
     y += int(cfg["section_gap"])
 
     players = row.get("players") or []
-    numbered = [f"{i}. {re.sub(r'^\s*\d+[.)]\s*', '', str(player)).strip()}" for i, player in enumerate(players, 1)]
+    numbered = [f"{i}. {re.sub(r'^\s*\d+[.)]\s*', '', str(player)).strip()}"
+                for i, player in enumerate(players, 1)]
     if not numbered:
         numbered = ["Selected team coming soon"]
-    max_y = int(cfg["max_content_y"])
-    requested_size = int(cfg["players_size"])
-    # Reduce size only when necessary to fit longer squads above the footer.
-    for size in range(requested_size, 18, -1):
-        font = font_asset(size)
-        count = sum(len(wrap_to_width(draw, line, font, usable_width)) for line in numbered)
-        if y + count * line_height(font, white_multiplier) <= max_y:
+
+    max_y = min(int(cfg["max_content_y"]), height - 205)
+    preferred = int(cfg["players_size"])
+    # Determine the full list height BEFORE drawing; never let a previous
+    # player's y position influence the font-fitting calculation.
+    for size in range(preferred, 19, -1):
+        candidate = font_asset(size)
+        step = round(size * white_spacing)
+        line_count = sum(len(wrap_to_width(draw, item, candidate, usable_width))
+                         for item in numbered)
+        if y + line_count * step <= max_y:
             break
-    for line in numbered:
-        draw_lines(line, font, player_color, white_multiplier)
+    else:
+        size = 20
+        candidate = font_asset(size)
+        step = round(size * white_spacing)
+
+    for player in numbered:
+        write_lines(player, candidate, white, step)
     return image
 
 
@@ -2823,7 +2836,7 @@ else:
                         with col_b:
                             cfg["line_spacing"] = st.number_input("White player line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg["line_spacing"]), step=0.05, key="admin_line_spacing")
                             cfg["yellow_line_spacing"] = st.number_input("Yellow fixture line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg.get("yellow_line_spacing", 1.3)), step=0.05, key="admin_yellow_line_spacing")
-                            cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 2)), key="admin_yellow_bold_stroke")
+                            cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 1)), key="admin_yellow_bold_stroke")
                             for key, label in [("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
                                 cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
                             cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
