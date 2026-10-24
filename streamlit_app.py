@@ -2712,200 +2712,204 @@ else:
             )
 
             st.divider()
-
-            st.markdown("### Team Card Copy Layout")
+            st.markdown("### Publish your team selections")
             st.caption(
-                "One copy-ready card per selected match. "
-                "Use the copy icon in each text block to paste into Canva. "
-                "All cards use your edited player lists."
+                "Review or edit the players above, then choose how to publish. "
+                "Both outputs use the same updated team lists."
             )
-
-            # Display all selected teams, not just the first four.
-            # Keep the configured grade order, then match date.
+            # All exports use the same edited teams, ordered by grade.
             grade_order = {grade: i for i, grade in enumerate(all_grades)}
             card_rows = sorted(
                 edited_rows,
                 key=lambda row: (
                     grade_order.get(row.get("grade"), 999),
                     row.get("date", ""),
-                    row.get("name", "")
-                )
-            )
-            card_columns = st.columns(2, gap="medium")
-            all_card_text = []
-            for index, card_row in enumerate(card_rows):
-                details, player_text, full_card = card_copy_parts(card_row)
-                all_card_text.append(full_card)
-                with card_columns[index % 2]:
-                    with st.container(border=True):
-                        st.markdown(f"**CARD {index + 1} — {card_row['grade'].upper()}**")
-                        full_tab, details_tab, players_tab = st.tabs(
-                            ["Full card", "Match details", "Players only"]
-                        )
-                        with full_tab:
-                            st.code(full_card, language=None, wrap_lines=True)
-                        with details_tab:
-                            st.code(details, language=None, wrap_lines=True)
-                        with players_tab:
-                            st.code(player_text, language=None, wrap_lines=True)
-
-            st.download_button(
-                "Download All Team Cards",
-                data="\n\n".join(
-                    f"{'-' * 36}\nCARD {i + 1}\n{'-' * 36}\n{card}"
-                    for i, card in enumerate(all_card_text)
+                    row.get("name", ""),
                 ),
-                file_name="hbcc_team_cards.txt",
-                mime="text/plain",
-                use_container_width=True,
             )
+            graphic_tab, announcement_tab = st.tabs([
+                "Instagram graphics", "Combined team announcement"
+            ])
 
-            st.divider()
-            st.markdown("### Instagram Team Graphics")
-            st.caption(
-                "Each selected team becomes its own 1080 × 1350 Instagram graphic "
-                "using the HBCC background and ITC Franklin Gothic LT Medium. "
-                "Your edited player lists and multi-day dates are included."
-            )
-            if not DEFAULT_TEMPLATE.exists() and not st.session_state.get("graphic_template_bytes"):
-                st.warning("Template missing: add hbcc_team_template.png beside streamlit_app.py or upload one in Template Manager.")
-            if not DEFAULT_FONT.exists() and not st.session_state.get("graphic_font_bytes"):
-                st.warning("Club font missing: add your licensed ITC Franklin Gothic LT Medium.otf beside streamlit_app.py or upload it in Template Manager.")
-            graphic_rows = card_rows
-            if graphic_rows:
-                preview_choice = st.selectbox(
-                    "Preview team graphic",
-                    range(len(graphic_rows)),
-                    format_func=lambda i: f"{graphic_rows[i]['grade']} · {graphic_opponent(graphic_rows[i])}",
-                    key="graphic_preview_choice"
+            with graphic_tab:
+                st.markdown("#### Instagram graphic generator")
+                st.caption(
+                    "Each selected team becomes its own 1080 × 1350 Instagram graphic "
+                    "using the HBCC background and ITC Franklin Gothic LT Medium. "
+                    "Your edited player lists and multi-day dates are included."
                 )
-                preview_row = graphic_rows[preview_choice]
-                preview = render_team_graphic(preview_row)
-                st.image(preview, caption=f"{preview_row['grade']} · Instagram portrait", width=420)
-                st.download_button(
-                    "Download this team's PNG",
-                    data=graphic_png(preview),
-                    file_name=graphic_filename(preview_row, preview_choice + 1),
-                    mime="image/png", use_container_width=True,
-                )
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                    for i, graphic_row in enumerate(graphic_rows, 1):
-                        archive.writestr(
-                            graphic_filename(graphic_row, i),
-                            graphic_png(render_team_graphic(graphic_row))
-                        )
-                st.download_button(
-                    f"Download all {len(graphic_rows)} Instagram graphics (ZIP)",
-                    data=zip_buffer.getvalue(),
-                    file_name="hbcc_instagram_team_selections.zip",
-                    mime="application/zip", use_container_width=True,
-                    type="primary"
-                )
-
-            with st.expander("Template Manager (admin only)"):
-                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
-                if not admin_password:
-                    st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
-                else:
-                    attempt = st.text_input("Admin password", type="password", key="template_admin_password")
-                    if attempt and hmac.compare_digest(attempt, str(admin_password)):
-                        st.success("Template administration unlocked for this session")
-                        st.caption("Changes are applied immediately. Upload a background or font and adjust text placement. Uploads are temporary until you save them to your GitHub repository.")
-                        new_background = st.file_uploader("Replace blank background (PNG)", type=["png"], key="admin_background")
-                        if new_background:
-                            st.session_state.graphic_template_bytes = new_background.getvalue()
-                        new_font = st.file_uploader("Replace font (licensed OTF or TTF)", type=["otf", "ttf"], key="admin_font")
-                        if new_font:
-                            st.session_state.graphic_font_bytes = new_font.getvalue()
-                        new_config = st.file_uploader("Import saved template settings (JSON)", type=["json"], key="admin_settings_import")
-                        if new_config and st.button("Apply imported settings"):
-                            try:
-                                values = json.loads(new_config.getvalue().decode("utf-8"))
-                                if not isinstance(values, dict):
-                                    raise ValueError("Expected JSON object")
-                                st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **{k:v for k,v in values.items() if k in DEFAULT_GRAPHIC_SETTINGS}}
-                                st.rerun()
-                            except (ValueError, UnicodeDecodeError) as exc:
-                                st.error(f"Invalid settings: {exc}")
-                        cfg = graphic_settings()
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            for key, label in [("left", "Left margin"), ("top", "Top margin"), ("title_size", "Grade font size"), ("details_size", "Fixture font size"), ("players_size", "Player font size")]:
-                                cfg[key] = st.number_input(label, min_value=10, max_value=250, value=int(cfg[key]), key="admin_"+key)
-                        with col_b:
-                            cfg["line_spacing"] = st.number_input("White player line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg["line_spacing"]), step=0.05, key="admin_line_spacing")
-                            cfg["yellow_line_spacing"] = st.number_input("Yellow fixture line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg.get("yellow_line_spacing", 1.3)), step=0.05, key="admin_yellow_line_spacing")
-                            cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 1)), key="admin_yellow_bold_stroke")
-                            for key, label in [("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
-                                cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
-                            cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
-                            cfg["players_color"] = st.color_picker("Player colour", value=cfg["players_color"], key="admin_players_color")
-                        st.download_button(
-                            "Download template settings (JSON)",
-                            data=json.dumps(cfg, indent=2),
-                            file_name="hbcc_graphic_settings.json", mime="application/json",
-                        )
-                        st.caption("To keep background and font changes after a Streamlit restart, commit hbcc_team_template.png and your licensed font to your private repository. The font is never included in generated PNG ZIP downloads.")
-                    elif attempt:
-                        st.error("Incorrect admin password")
-
-            st.divider()
-
-            st.markdown(
-                "### Combined Team Announcement"
-            )
-
-            st.caption(
-                f"{len(edited_rows)} teams · "
-                f"{total_players} players"
-            )
-
-            st.code(
-                output,
-                language=None,
-                wrap_lines=True
-            )
-
-            with st.expander(
-                "Edit or copy announcement"
-            ):
-                if (
-                    st.session_state.get(
-                        "combined_source"
+                if not DEFAULT_TEMPLATE.exists() and not st.session_state.get("graphic_template_bytes"):
+                    st.warning("Template missing: add hbcc_team_template.png beside streamlit_app.py or upload one in Template Manager.")
+                if not DEFAULT_FONT.exists() and not st.session_state.get("graphic_font_bytes"):
+                    st.warning("Club font missing: add your licensed ITC Franklin Gothic LT Medium.otf beside streamlit_app.py or upload it in Template Manager.")
+                graphic_rows = card_rows
+                if graphic_rows:
+                    preview_choice = st.selectbox(
+                        "Preview team graphic",
+                        range(len(graphic_rows)),
+                        format_func=lambda i: f"{graphic_rows[i]['grade']} · {graphic_opponent(graphic_rows[i])}",
+                        key="graphic_preview_choice"
                     )
-                    != output
-                ):
-                    st.session_state[
-                        "combined_edit"
-                    ] = output
+                    preview_row = graphic_rows[preview_choice]
+                    preview = render_team_graphic(preview_row)
+                    st.image(preview, caption=f"{preview_row['grade']} · Instagram portrait", width=420)
+                    st.download_button(
+                        "Download this team's PNG",
+                        data=graphic_png(preview),
+                        file_name=graphic_filename(preview_row, preview_choice + 1),
+                        mime="image/png", use_container_width=True,
+                    )
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                        for i, graphic_row in enumerate(graphic_rows, 1):
+                            archive.writestr(
+                                graphic_filename(graphic_row, i),
+                                graphic_png(render_team_graphic(graphic_row))
+                            )
+                    st.download_button(
+                        f"Download all {len(graphic_rows)} Instagram graphics (ZIP)",
+                        data=zip_buffer.getvalue(),
+                        file_name="hbcc_instagram_team_selections.zip",
+                        mime="application/zip", use_container_width=True,
+                        type="primary"
+                    )
 
-                    st.session_state[
-                        "combined_source"
-                    ] = output
+                with st.expander("Template Manager (admin only)"):
+                    admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
+                    if not admin_password:
+                        st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
+                    else:
+                        attempt = st.text_input("Admin password", type="password", key="template_admin_password")
+                        if attempt and hmac.compare_digest(attempt, str(admin_password)):
+                            st.success("Template administration unlocked for this session")
+                            st.caption("Changes are applied immediately. Upload a background or font and adjust text placement. Uploads are temporary until you save them to your GitHub repository.")
+                            new_background = st.file_uploader("Replace blank background (PNG)", type=["png"], key="admin_background")
+                            if new_background:
+                                st.session_state.graphic_template_bytes = new_background.getvalue()
+                            new_font = st.file_uploader("Replace font (licensed OTF or TTF)", type=["otf", "ttf"], key="admin_font")
+                            if new_font:
+                                st.session_state.graphic_font_bytes = new_font.getvalue()
+                            new_config = st.file_uploader("Import saved template settings (JSON)", type=["json"], key="admin_settings_import")
+                            if new_config and st.button("Apply imported settings"):
+                                try:
+                                    values = json.loads(new_config.getvalue().decode("utf-8"))
+                                    if not isinstance(values, dict):
+                                        raise ValueError("Expected JSON object")
+                                    st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **{k:v for k,v in values.items() if k in DEFAULT_GRAPHIC_SETTINGS}}
+                                    st.rerun()
+                                except (ValueError, UnicodeDecodeError) as exc:
+                                    st.error(f"Invalid settings: {exc}")
+                            cfg = graphic_settings()
+                            col_a, col_b = st.columns(2)
+                            with col_a:
+                                for key, label in [("left", "Left margin"), ("top", "Top margin"), ("title_size", "Grade font size"), ("details_size", "Fixture font size"), ("players_size", "Player font size")]:
+                                    cfg[key] = st.number_input(label, min_value=10, max_value=250, value=int(cfg[key]), key="admin_"+key)
+                            with col_b:
+                                cfg["line_spacing"] = st.number_input("White player line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg["line_spacing"]), step=0.05, key="admin_line_spacing")
+                                cfg["yellow_line_spacing"] = st.number_input("Yellow fixture line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg.get("yellow_line_spacing", 1.3)), step=0.05, key="admin_yellow_line_spacing")
+                                cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 1)), key="admin_yellow_bold_stroke")
+                                for key, label in [("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
+                                    cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
+                                cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
+                                cfg["players_color"] = st.color_picker("Player colour", value=cfg["players_color"], key="admin_players_color")
+                            st.download_button(
+                                "Download template settings (JSON)",
+                                data=json.dumps(cfg, indent=2),
+                                file_name="hbcc_graphic_settings.json", mime="application/json",
+                            )
+                            st.caption("To keep background and font changes after a Streamlit restart, commit hbcc_team_template.png and your licensed font to your private repository. The font is never included in generated PNG ZIP downloads.")
+                        elif attempt:
+                            st.error("Incorrect admin password")
 
-                st.text_area(
-                    "Copy-ready selections",
-                    key="combined_edit",
-                    height=450
+            with announcement_tab:
+                st.markdown("#### Combined team announcement")
+
+                st.caption(
+                    f"{len(edited_rows)} teams · "
+                    f"{total_players} players"
                 )
 
-            st.download_button(
-                "Download Team Selections",
-                st.session_state.get(
-                    "combined_edit",
-                    output
-                ),
-                "hbcc_team_selections.txt",
-                "text/plain",
-                use_container_width=True
-            )
+                st.code(
+                    output,
+                    language=None,
+                    wrap_lines=True
+                )
 
-            st.caption(
-                "Verify player lists and captains "
-                "before publishing."
-            )
+                with st.expander(
+                    "Edit or copy announcement"
+                ):
+                    if (
+                        st.session_state.get(
+                            "combined_source"
+                        )
+                        != output
+                    ):
+                        st.session_state[
+                            "combined_edit"
+                        ] = output
 
+                        st.session_state[
+                            "combined_source"
+                        ] = output
+
+                    st.text_area(
+                        "Copy-ready selections",
+                        key="combined_edit",
+                        height=450
+                    )
+
+                st.download_button(
+                    "Download Team Selections",
+                    st.session_state.get(
+                        "combined_edit",
+                        output
+                    ),
+                    "hbcc_team_selections.txt",
+                    "text/plain",
+                    use_container_width=True
+                )
+
+                st.caption(
+                    "Verify player lists and captains "
+                    "before publishing."
+                )
+
+                with st.expander("Individual team copy cards (for Canva)"):
+                    st.markdown("#### Individual team text cards")
+                    st.caption(
+                        "One copy-ready card per selected match. "
+                        "Use the copy icon in each text block to paste into Canva. "
+                        "All cards use your edited player lists."
+                    )
+
+                    card_columns = st.columns(2, gap="medium")
+                    all_card_text = []
+                    for index, card_row in enumerate(card_rows):
+                        details, player_text, full_card = card_copy_parts(card_row)
+                        all_card_text.append(full_card)
+                        with card_columns[index % 2]:
+                            with st.container(border=True):
+                                st.markdown(f"**CARD {index + 1} — {card_row['grade'].upper()}**")
+                                full_tab, details_tab, players_tab = st.tabs(
+                                    ["Full card", "Match details", "Players only"]
+                                )
+                                with full_tab:
+                                    st.code(full_card, language=None, wrap_lines=True)
+                                with details_tab:
+                                    st.code(details, language=None, wrap_lines=True)
+                                with players_tab:
+                                    st.code(player_text, language=None, wrap_lines=True)
+
+                    st.download_button(
+                        "Download All Team Cards",
+                        data="\n\n".join(
+                            f"{'-' * 36}\nCARD {i + 1}\n{'-' * 36}\n{card}"
+                            for i, card in enumerate(all_card_text)
+                        ),
+                        file_name="hbcc_team_cards.txt",
+                        mime="text/plain",
+                        use_container_width=True,
+                    )
 
 # ============================================================
 # DIAGNOSTICS AND FOOTER
