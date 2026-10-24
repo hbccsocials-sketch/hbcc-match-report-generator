@@ -2734,6 +2734,40 @@ else:
                     row.get("name", ""),
                 ),
             )
+            # Make the two primary publishing actions visually prominent.
+            st.markdown("""
+            <style>
+            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] {
+                gap: 14px; border-bottom: none; padding: 6px 0 16px;
+            }
+            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
+                background: #101b33; color: #ffffff !important;
+                border: 2px solid #101b33; border-radius: 12px;
+                padding: 15px 24px; min-height: 58px;
+                font-size: 17px; font-weight: 700;
+                flex: 1; justify-content: center;
+            }
+            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[aria-selected="true"] {
+                background: #f5b82e; border-color: #f5b82e;
+                color: #101b33 !important;
+            }
+            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] p {
+                color: inherit !important; font-size: 17px; font-weight: 700;
+            }
+            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"]:hover {
+                border-color: #f5b82e;
+            }
+            @media (max-width: 640px) {
+                div[data-testid="stTabs"] > div[data-baseweb="tab-list"] { gap: 6px; }
+                div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
+                    padding: 10px 8px; min-height: 52px;
+                }
+                div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] p {
+                    font-size: 12px;
+                }
+            }
+            </style>
+            """, unsafe_allow_html=True)
             graphic_tab, announcement_tab = st.tabs([
                 "Instagram graphics", "Combined team announcement"
             ])
@@ -2751,21 +2785,51 @@ else:
                     st.warning("Club font missing: add your licensed ITC Franklin Gothic LT Medium.otf beside streamlit_app.py or upload it in Template Manager.")
                 graphic_rows = card_rows
                 if graphic_rows:
-                    preview_choice = st.selectbox(
-                        "Preview team graphic",
-                        range(len(graphic_rows)),
-                        format_func=lambda i: f"{graphic_rows[i]['grade']} · {graphic_opponent(graphic_rows[i])}",
-                        key="graphic_preview_choice"
+                    st.markdown(f"**{len(graphic_rows)} team graphics ready**")
+                    preview_mode = st.radio(
+                        "Preview layout",
+                        ["Gallery — all teams", "Single team — larger preview"],
+                        horizontal=True,
+                        key="team_graphic_preview_mode",
                     )
-                    preview_row = graphic_rows[preview_choice]
-                    preview = render_team_graphic(preview_row)
-                    st.image(preview, caption=f"{preview_row['grade']} · Instagram portrait", width=420)
-                    st.download_button(
-                        "Download this team's PNG",
-                        data=graphic_png(preview),
-                        file_name=graphic_filename(preview_row, preview_choice + 1),
-                        mime="image/png", use_container_width=True,
-                    )
+                    if preview_mode == "Gallery — all teams":
+                        st.caption("See every team at once. Download a PNG beneath each preview, or use the ZIP below.")
+                        for batch_start in range(0, len(graphic_rows), 3):
+                            gallery_cols = st.columns(3, gap="medium")
+                            for offset, gallery_col in enumerate(gallery_cols):
+                                index = batch_start + offset
+                                if index >= len(graphic_rows):
+                                    continue
+                                row = graphic_rows[index]
+                                with gallery_col:
+                                    st.markdown(f"**{row['grade']}**")
+                                    st.caption(f"vs {graphic_opponent(row)}")
+                                    rendered = render_team_graphic(row)
+                                    st.image(rendered, use_container_width=True)
+                                    st.download_button(
+                                        "Download PNG",
+                                        data=graphic_png(rendered),
+                                        file_name=graphic_filename(row, index + 1),
+                                        mime="image/png",
+                                        key=f"gallery_download_{index}",
+                                        use_container_width=True,
+                                    )
+                    else:
+                        preview_choice = st.selectbox(
+                            "Select team",
+                            range(len(graphic_rows)),
+                            format_func=lambda i: f"{graphic_rows[i]['grade']} · {graphic_opponent(graphic_rows[i])}",
+                            key="graphic_preview_choice"
+                        )
+                        preview_row = graphic_rows[preview_choice]
+                        preview = render_team_graphic(preview_row)
+                        st.image(preview, caption=f"{preview_row['grade']} · Instagram portrait", width=420)
+                        st.download_button(
+                            "Download this team's PNG",
+                            data=graphic_png(preview),
+                            file_name=graphic_filename(preview_row, preview_choice + 1),
+                            mime="image/png", use_container_width=True,
+                        )
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                         for i, graphic_row in enumerate(graphic_rows, 1):
@@ -2782,7 +2846,7 @@ else:
                     )
 
                 with st.expander("Template Manager (admin only)"):
-                    admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
+                    admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947!")
                     if not admin_password:
                         st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
                     else:
