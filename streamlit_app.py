@@ -2538,9 +2538,13 @@ else:
                         row
                     )
 
-            st.session_state.selection_rows = (
-                rows
-            )
+            st.session_state.selection_rows = rows
+            # A fresh retrieval must initialise each editor from the
+            # newly fetched players, not a previous session's text area.
+            for fixture_row in rows:
+                fixture_mid = fixture_row["id"]
+                for prefix in ("player_edit_v2_", "player_source_v2_"):
+                    st.session_state.pop(prefix + fixture_mid, None)
 
         if st.session_state.selection_rows:
             edited_rows = []
@@ -2628,12 +2632,12 @@ else:
                         )
 
                     edit_key = (
-                        "player_edit_"
+                        "player_edit_v2_"
                         + mid
                     )
 
                     source_key = (
-                        "player_source_"
+                        "player_source_v2_"
                         + mid
                     )
 
@@ -2641,12 +2645,15 @@ else:
                         source_players
                     )
 
-                    if (
-                        st.session_state.get(
-                            source_key
-                        )
-                        != signature
-                    ):
+                    # A stale/empty widget value can survive a Streamlit
+                    # rerun even when PlayCricket returned a populated list.
+                    # Populate from the selected source unless the user has
+                    # already entered non-empty manual edits.
+                    existing_text = st.session_state.get(edit_key, "")
+                    source_changed = st.session_state.get(source_key) != signature
+                    needs_initial_population = bool(source_players) and not str(existing_text).strip()
+
+                    if source_changed or needs_initial_population:
                         st.session_state[
                             edit_key
                         ] = (
