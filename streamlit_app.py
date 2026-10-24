@@ -2734,45 +2734,48 @@ else:
                     row.get("name", ""),
                 ),
             )
-            # Make the two primary publishing actions visually prominent.
+            # Primary publishing navigation: real Streamlit buttons, not tabs.
+            if "team_publish_view" not in st.session_state:
+                st.session_state.team_publish_view = "graphics"
             st.markdown("""
             <style>
-            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] {
-                gap: 14px; border-bottom: none; padding: 6px 0 16px;
-            }
-            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
-                background: #101b33; color: #ffffff !important;
-                border: 2px solid #101b33; border-radius: 12px;
-                padding: 15px 24px; min-height: 58px;
-                font-size: 17px; font-weight: 700;
-                flex: 1; justify-content: center;
-            }
-            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[aria-selected="true"] {
-                background: #f5b82e; border-color: #f5b82e;
+            div[data-testid="stButton"] button[kind="primary"] {
+                background: #f5b82e !important;
                 color: #101b33 !important;
+                border: 2px solid #f5b82e !important;
+                font-weight: 800 !important;
             }
-            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] p {
-                color: inherit !important; font-size: 17px; font-weight: 700;
+            div[data-testid="stButton"] button[kind="secondary"] {
+                background: #101b33 !important;
+                color: white !important;
+                border: 2px solid #101b33 !important;
+                font-weight: 700 !important;
             }
-            div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"]:hover {
-                border-color: #f5b82e;
-            }
-            @media (max-width: 640px) {
-                div[data-testid="stTabs"] > div[data-baseweb="tab-list"] { gap: 6px; }
-                div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
-                    padding: 10px 8px; min-height: 52px;
-                }
-                div[data-testid="stTabs"] > div[data-baseweb="tab-list"] button[data-baseweb="tab"] p {
-                    font-size: 12px;
-                }
+            div[data-testid="stButton"] button[kind="secondary"]:hover {
+                border-color: #f5b82e !important;
+                color: #f5b82e !important;
             }
             </style>
             """, unsafe_allow_html=True)
-            graphic_tab, announcement_tab = st.tabs([
-                "Instagram graphics", "Combined team announcement"
-            ])
+            publish_cols = st.columns(3, gap="small")
+            publish_options = [
+                ("graphics", "Instagram graphics"),
+                ("announcement", "Combined team announcement"),
+                ("template", "Template Manager"),
+            ]
+            for nav_col, (nav_key, nav_label) in zip(publish_cols, publish_options):
+                with nav_col:
+                    if st.button(
+                        nav_label,
+                        key=f"publish_nav_{nav_key}",
+                        type="primary" if st.session_state.team_publish_view == nav_key else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state.team_publish_view = nav_key
+                        st.rerun()
+            st.divider()
 
-            with graphic_tab:
+            if st.session_state.team_publish_view == "graphics":
                 st.markdown("#### Instagram graphic generator")
                 st.caption(
                     "Each selected team becomes its own 1080 × 1350 Instagram graphic "
@@ -2845,54 +2848,57 @@ else:
                         type="primary"
                     )
 
-                with st.expander("Template Manager (admin only)"):
-                    admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947!")
-                    if not admin_password:
-                        st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
-                    else:
-                        attempt = st.text_input("Admin password", type="password", key="template_admin_password")
-                        if attempt and hmac.compare_digest(attempt, str(admin_password)):
-                            st.success("Template administration unlocked for this session")
-                            st.caption("Changes are applied immediately. Upload a background or font and adjust text placement. Uploads are temporary until you save them to your GitHub repository.")
-                            new_background = st.file_uploader("Replace blank background (PNG)", type=["png"], key="admin_background")
-                            if new_background:
-                                st.session_state.graphic_template_bytes = new_background.getvalue()
-                            new_font = st.file_uploader("Replace font (licensed OTF or TTF)", type=["otf", "ttf"], key="admin_font")
-                            if new_font:
-                                st.session_state.graphic_font_bytes = new_font.getvalue()
-                            new_config = st.file_uploader("Import saved template settings (JSON)", type=["json"], key="admin_settings_import")
-                            if new_config and st.button("Apply imported settings"):
-                                try:
-                                    values = json.loads(new_config.getvalue().decode("utf-8"))
-                                    if not isinstance(values, dict):
-                                        raise ValueError("Expected JSON object")
-                                    st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **{k:v for k,v in values.items() if k in DEFAULT_GRAPHIC_SETTINGS}}
-                                    st.rerun()
-                                except (ValueError, UnicodeDecodeError) as exc:
-                                    st.error(f"Invalid settings: {exc}")
-                            cfg = graphic_settings()
-                            col_a, col_b = st.columns(2)
-                            with col_a:
-                                for key, label in [("left", "Left margin"), ("top", "Top margin"), ("title_size", "Grade font size"), ("details_size", "Fixture font size"), ("players_size", "Player font size")]:
-                                    cfg[key] = st.number_input(label, min_value=10, max_value=250, value=int(cfg[key]), key="admin_"+key)
-                            with col_b:
-                                cfg["line_spacing"] = st.number_input("White player line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg["line_spacing"]), step=0.05, key="admin_line_spacing")
-                                cfg["yellow_line_spacing"] = st.number_input("Yellow fixture line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg.get("yellow_line_spacing", 1.3)), step=0.05, key="admin_yellow_line_spacing")
-                                cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 1)), key="admin_yellow_bold_stroke")
-                                for key, label in [("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
-                                    cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
-                                cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
-                                cfg["players_color"] = st.color_picker("Player colour", value=cfg["players_color"], key="admin_players_color")
-                            st.download_button(
-                                "Download template settings (JSON)",
-                                data=json.dumps(cfg, indent=2),
-                                file_name="hbcc_graphic_settings.json", mime="application/json",
-                            )
-                            st.caption("To keep background and font changes after a Streamlit restart, commit hbcc_team_template.png and your licensed font to your private repository. The font is never included in generated PNG ZIP downloads.")
-                        elif attempt:
-                            st.error("Incorrect admin password")
+            if st.session_state.team_publish_view == "template":
+                st.markdown("#### Template Manager")
+                st.caption("Admin access required to change the graphic template and typography.")
+                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
+                if not admin_password:
+                    st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
+                else:
+                    attempt = st.text_input("Admin password", type="password", key="template_admin_password")
+                    if attempt and hmac.compare_digest(attempt, str(admin_password)):
+                        st.success("Template administration unlocked for this session")
+                        st.caption("Changes are applied immediately. Upload a background or font and adjust text placement. Uploads are temporary until you save them to your GitHub repository.")
+                        new_background = st.file_uploader("Replace blank background (PNG)", type=["png"], key="admin_background")
+                        if new_background:
+                            st.session_state.graphic_template_bytes = new_background.getvalue()
+                        new_font = st.file_uploader("Replace font (licensed OTF or TTF)", type=["otf", "ttf"], key="admin_font")
+                        if new_font:
+                            st.session_state.graphic_font_bytes = new_font.getvalue()
+                        new_config = st.file_uploader("Import saved template settings (JSON)", type=["json"], key="admin_settings_import")
+                        if new_config and st.button("Apply imported settings"):
+                            try:
+                                values = json.loads(new_config.getvalue().decode("utf-8"))
+                                if not isinstance(values, dict):
+                                    raise ValueError("Expected JSON object")
+                                st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **{k:v for k,v in values.items() if k in DEFAULT_GRAPHIC_SETTINGS}}
+                                st.rerun()
+                            except (ValueError, UnicodeDecodeError) as exc:
+                                st.error(f"Invalid settings: {exc}")
+                        cfg = graphic_settings()
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            for key, label in [("left", "Left margin"), ("top", "Top margin"), ("title_size", "Grade font size"), ("details_size", "Fixture font size"), ("players_size", "Player font size")]:
+                                cfg[key] = st.number_input(label, min_value=10, max_value=250, value=int(cfg[key]), key="admin_"+key)
+                        with col_b:
+                            cfg["line_spacing"] = st.number_input("White player line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg["line_spacing"]), step=0.05, key="admin_line_spacing")
+                            cfg["yellow_line_spacing"] = st.number_input("Yellow fixture line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg.get("yellow_line_spacing", 1.3)), step=0.05, key="admin_yellow_line_spacing")
+                            cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 1)), key="admin_yellow_bold_stroke")
+                            for key, label in [("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
+                                cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
+                            cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
+                            cfg["players_color"] = st.color_picker("Player colour", value=cfg["players_color"], key="admin_players_color")
+                        st.download_button(
+                            "Download template settings (JSON)",
+                            data=json.dumps(cfg, indent=2),
+                            file_name="hbcc_graphic_settings.json", mime="application/json",
+                        )
+                        st.caption("To keep background and font changes after a Streamlit restart, commit hbcc_team_template.png and your licensed font to your private repository. The font is never included in generated PNG ZIP downloads.")
+                    elif attempt:
+                        st.error("Incorrect admin password")
 
-            with announcement_tab:
+
+            if st.session_state.team_publish_view == "announcement":
                 st.markdown("#### Combined team announcement")
 
                 st.caption(
