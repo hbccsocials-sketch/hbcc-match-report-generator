@@ -2550,73 +2550,73 @@ else:
             edited_rows = []
             total_players = 0
 
-            # Compact team review: one editor, all team data retained.
-            team_rows = st.session_state.selection_rows
-            st.markdown("### Review player lists")
-            st.caption(f"{len(team_rows)} teams retrieved. Select a team to review or edit; changes are kept when you switch teams.")
-            active_idx = st.selectbox(
-                "Team to review",
-                options=list(range(len(team_rows))),
-                format_func=lambda i: f"{team_rows[i]['grade']} · {team_rows[i]['name']}",
-                key="active_team_review_index",
-            )
+            st.caption(f"{len(team_rows)} teams retrieved · Player lists are ready for publishing.")
+            with st.expander("Edit or review player lists", expanded=False):
+                # Compact team review: one editor, all team data retained.
+                team_rows = st.session_state.selection_rows
+                active_idx = st.selectbox(
+                    "Team to review",
+                    options=list(range(len(team_rows))),
+                    format_func=lambda i: f"{team_rows[i]['grade']} · {team_rows[i]['name']}",
+                    key="active_team_review_index",
+                )
 
-            for i, row in enumerate(team_rows):
-                mid = row["id"]
-                candidates = row["candidates"]
-                is_active = i == active_idx
-                source_key = "player_source_v2_" + mid
-                edit_key = "player_edit_v2_" + mid
-                choice_key = "source_" + mid
+                for i, row in enumerate(team_rows):
+                    mid = row["id"]
+                    candidates = row["candidates"]
+                    is_active = i == active_idx
+                    source_key = "player_source_v2_" + mid
+                    edit_key = "player_edit_v2_" + mid
+                    choice_key = "source_" + mid
 
-                # Initialise each team's editor, even when it is not visible.
-                if candidates:
-                    source_idx = min(int(st.session_state.get(choice_key, 0)), len(candidates) - 1)
+                    # Initialise each team's editor, even when it is not visible.
+                    if candidates:
+                        source_idx = min(int(st.session_state.get(choice_key, 0)), len(candidates) - 1)
+                        if is_active:
+                            source_idx = st.selectbox(
+                                "Team list source",
+                                options=list(range(len(candidates))),
+                                index=source_idx,
+                                format_func=lambda j, opts=candidates: (
+                                    f"{len(opts[j]['players'])} players · {opts[j]['source']}"
+                                ),
+                                key=choice_key,
+                            )
+                        source_players = candidates[source_idx]["players"]
+                    else:
+                        source_players = []
+
+                    signature = tuple(source_players)
+                    existing_text = st.session_state.get(edit_key, "")
+                    if (st.session_state.get(source_key) != signature or
+                            (source_players and not str(existing_text).strip())):
+                        st.session_state[edit_key] = "\n".join(source_players)
+                        st.session_state[source_key] = signature
+
                     if is_active:
-                        source_idx = st.selectbox(
-                            "Team list source",
-                            options=list(range(len(candidates))),
-                            index=source_idx,
-                            format_func=lambda j, opts=candidates: (
-                                f"{len(opts[j]['players'])} players · {opts[j]['source']}"
-                            ),
-                            key=choice_key,
+                        st.caption(f"{row['date']} · {row['venue'] or 'Venue unavailable'}")
+                        if row["error"]:
+                            st.error(row["error"])
+                        if not candidates:
+                            st.info("Selected team coming soon. You can add players manually when published.")
+                        elif not candidates[source_idx]["explicit"]:
+                            st.caption("General player list — verify against the published team.")
+                        if source_players and not any("(c)" in player.lower() for player in source_players):
+                            st.caption("Captain not detected. Add (c) after the captain's name if required.")
+                        st.text_area(
+                            "Published players (one per line; mark captain with (c))",
+                            key=edit_key,
+                            height=min(410, max(230, len(source_players) * 27 + 45)),
                         )
-                    source_players = candidates[source_idx]["players"]
-                else:
-                    source_players = []
+                        if st.checkbox("Show technical player list sources", key="show_technical_" + mid):
+                            st.json([{"source": c["source"], "players": c["players"]} for c in candidates])
 
-                signature = tuple(source_players)
-                existing_text = st.session_state.get(edit_key, "")
-                if (st.session_state.get(source_key) != signature or
-                        (source_players and not str(existing_text).strip())):
-                    st.session_state[edit_key] = "\n".join(source_players)
-                    st.session_state[source_key] = signature
+                    players = [line.strip() for line in st.session_state.get(edit_key, "").splitlines() if line.strip()]
+                    total_players += len(players)
+                    edited_rows.append({**row, "players": players})
 
-                if is_active:
-                    st.caption(f"{row['date']} · {row['venue'] or 'Venue unavailable'}")
-                    if row["error"]:
-                        st.error(row["error"])
-                    if not candidates:
-                        st.info("Selected team coming soon. You can add players manually when published.")
-                    elif not candidates[source_idx]["explicit"]:
-                        st.caption("General player list — verify against the published team.")
-                    if source_players and not any("(c)" in player.lower() for player in source_players):
-                        st.caption("Captain not detected. Add (c) after the captain's name if required.")
-                    st.text_area(
-                        "Published players (one per line; mark captain with (c))",
-                        key=edit_key,
-                        height=min(410, max(230, len(source_players) * 27 + 45)),
-                    )
-                    with st.expander("Technical player list sources"):
-                        st.json([{"source": c["source"], "players": c["players"]} for c in candidates])
-
-                players = [line.strip() for line in st.session_state.get(edit_key, "").splitlines() if line.strip()]
-                total_players += len(players)
-                edited_rows.append({**row, "players": players})
 
             st.caption(f"{total_players} players across {len(edited_rows)} teams · [Verify selected team on PlayCricket]({team_rows[active_idx]['url']})")
-
             output = (
                 selection_output(
                     edited_rows
