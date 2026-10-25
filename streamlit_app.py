@@ -1520,7 +1520,8 @@ def fixture_center(draw, x, y, text, font, fill):
     draw.text((int(x - (box[2] - box[0]) / 2), int(y)), text, font=font, fill=fill)
 
 
-def fixture_logo_paste(image, entry, center, size=140):
+def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
+    """Paste a large, centre-cropped club visual, clipped to its fixture panel."""
     if not entry:
         return
     raw = fixture_logo_bytes(entry)
@@ -1528,9 +1529,24 @@ def fixture_logo_paste(image, entry, center, size=140):
         return
     try:
         logo = Image.open(io.BytesIO(raw)).convert("RGBA")
-        logo.thumbnail((size, size), Image.Resampling.LANCZOS)
+        # Square club artworks contain their own colour/texture, so preserve the
+        # whole image and allow the outer edge to be cropped by the panel.
+        logo = logo.resize((int(size), int(size)), Image.Resampling.LANCZOS)
         x, y = center
-        image.paste(logo, (int(x - logo.width / 2), int(y - logo.height / 2)), logo)
+        left = int(x - logo.width / 2)
+        upper = int(y - logo.height / 2)
+        if clip_box is None:
+            image.paste(logo, (left, upper), logo)
+            return
+        x0, y0, x1, y1 = map(int, clip_box)
+        crop_l = max(0, x0-left)
+        crop_t = max(0, y0-upper)
+        crop_r = min(logo.width, x1-left)
+        crop_b = min(logo.height, y1-upper)
+        if crop_r <= crop_l or crop_b <= crop_t:
+            return
+        part = logo.crop((crop_l, crop_t, crop_r, crop_b))
+        image.paste(part, (left+crop_l, upper+crop_t), part)
     except (OSError, ValueError):
         return
 
@@ -1566,15 +1582,27 @@ def fixture_graphic(rows, settings):
         hc = fixture_find_club(home); ac = fixture_find_club(away)
         d.rounded_rectangle((68,y,1012,y+card_h), radius=24, fill=(12,27,55), outline=(245,184,46), width=3)
         d.rounded_rectangle((80,y+12,1000,y+card_h-12), radius=15, outline=(61,83,121), width=2)
-        logo_y = y + card_h*0.48
-        fixture_logo_paste(background, hc, (188,logo_y), min(158,card_h-45))
-        fixture_logo_paste(background, ac, (892,logo_y), min(158,card_h-45))
-        # Render logos before lettering to preserve legibility.
+        # Home team is always the left side, away team always the right.
+        # Club art fills the full height of each matchup card and deliberately
+        # bleeds beyond the side edge, like the NBA reference.
+        logo_y = y + card_h / 2
+        logo_size = int(card_h * float(settings.get("logo_scale", 1.48)))
+        bleed = int(settings.get("logo_bleed", 38))
+        clip = (70, y + 4, 1010, y + card_h - 4)
+        fixture_logo_paste(background, hc, (70 + logo_size / 2 - bleed, logo_y), logo_size, clip)
+        fixture_logo_paste(background, ac, (1010 - logo_size / 2 + bleed, logo_y), logo_size, clip)
+        # Darken the middle for legible names, date and venue.
+        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        shade = ImageDraw.Draw(overlay)
+        for xx in range(265, 816, 5):
+            strength = max(0, min(185, int(185 - abs(xx - 540) * 0.36)))
+            shade.rectangle((xx, y + 5, xx + 5, y + card_h - 5), fill=(8, 19, 39, strength))
+        background = Image.alpha_composite(background.convert("RGBA"), overlay).convert("RGB")
         d = ImageDraw.Draw(background)
-        hf = fixture_text_fit(d, fixture_abbrev(home,hc), 185, 65, 27, True)
-        af = fixture_text_fit(d, fixture_abbrev(away,ac), 185, 65, 27, True)
-        fixture_center(d, 380, y+38, fixture_abbrev(home,hc), hf, white)
-        fixture_center(d, 700, y+38, fixture_abbrev(away,ac), af, white)
+        hf = fixture_text_fit(d, fixture_abbrev(home,hc), 165, 61, 27, True)
+        af = fixture_text_fit(d, fixture_abbrev(away,ac), 165, 61, 27, True)
+        fixture_center(d, 375, y+34, fixture_abbrev(home,hc), hf, white)
+        fixture_center(d, 705, y+34, fixture_abbrev(away,ac), af, white)
         fixture_center(d, 540, y+42, "VS", fixture_font(35,True), yellow)
         date_str = " & ".join(row.get("playing_dates") or [row.get("date", "")])
         details = [date_str, str(row.get("venue") or "Venue TBC"), str(row.get("grade") or "")]
@@ -1582,9 +1610,6 @@ def fixture_graphic(rows, settings):
             maxw = 420 if j == 1 else 490
             font = fixture_text_fit(d, line, maxw, 27 if j == 0 else 22, 15, j==0)
             fixture_center(d, 540, y+102+j*29, line, font, yellow if j==0 else white)
-        for x, name, club in ((188,home,hc),(892,away,ac)):
-            label = club.get("name",name) if club else name
-            fixture_center(d, x, y+card_h-42, label, fixture_text_fit(d,label,205,20,12), white)
     footer = "HAWTHORN BOROONDARA CRICKET CLUB"
     fixture_center(d, w//2, 1250, footer, fixture_font(24,True), yellow)
     return background
@@ -1619,6 +1644,8 @@ def fixture_admin():
     cfg["cards_top"] = st.slider("First match position", 195, 380, int(cfg["cards_top"]))
     cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg["cards_bottom"]))
     cfg["yellow"] = st.color_picker("Accent colour", cfg["yellow"])
+    cfg["logo_scale"] = st.slider("Club visual size", 1.0, 2.2, float(cfg.get("logo_scale", 1.48)), 0.05)
+    cfg["logo_bleed"] = st.slider("Logo side cropping", 0, 120, int(cfg.get("logo_bleed", 38)))
     cfg["background"] = st.selectbox("Background", ["Red to navy gradient", "HBCC existing template"], index=["Red to navy gradient", "HBCC existing template"].index(cfg["background"]))
     st.download_button("Download template settings JSON", json.dumps(cfg, indent=2), "fixture_template_settings.json", "application/json")
     st.divider()
@@ -1664,7 +1691,7 @@ def fixture_admin():
 def fixture_publisher(chosen):
     st.caption(f"{len(chosen)} matches selected · Instagram portrait 1080 × 1350 · up to 3 fixtures per graphic")
     if "fixture_graphic_settings" not in st.session_state:
-        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient"}
+        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.48, "logo_bleed":38}
     fixture_library()
     if "fixture_view" not in st.session_state:
         st.session_state.fixture_view = "graphics"
