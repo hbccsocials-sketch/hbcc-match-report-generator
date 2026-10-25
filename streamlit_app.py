@@ -552,6 +552,33 @@ def collect_matches(payload):
     return list(found.values())
 
 
+def fixture_home_away(record, detail=None):
+    """Read actual home/away indicators before relying on display order."""
+    sources = [record]
+    if isinstance(detail, dict):
+        sources.extend([detail, detail.get("matchSummary"), detail.get("match")])
+    for obj in sources:
+        if not isinstance(obj, dict):
+            continue
+        h = obj.get("homeTeam") or obj.get("homeTeamSummary")
+        a = obj.get("awayTeam") or obj.get("awayTeamSummary")
+        if isinstance(h, dict) and isinstance(a, dict):
+            hn, an = name_of(h), name_of(a)
+            if hn and an:
+                return hn, an
+        teams = teams_of(obj)
+        home = away = ""
+        for team in teams:
+            role = str(team.get("homeAway") or team.get("homeOrAway") or team.get("side") or team.get("teamType") or "").lower()
+            if role in ("home", "h") or team.get("isHome") is True:
+                home = name_of(team)
+            if role in ("away", "a") or team.get("isAway") is True:
+                away = name_of(team)
+        if home and away:
+            return home, away
+    return None, None
+
+
 def fixture_from(record, grade, team_id, detail=None):
     summary = (
         (detail or {}).get("matchSummary")
@@ -575,6 +602,7 @@ def fixture_from(record, grade, team_id, detail=None):
         label = fixture_name(summary)
 
     mid = match_id(record)
+    home_name, away_name = fixture_home_away(record, detail)
 
     return {
         "id": mid,
@@ -583,6 +611,8 @@ def fixture_from(record, grade, team_id, detail=None):
         "date": str(when) if when else "",
         "playing_dates": [str(day) for day in playing_dates],
         "name": label,
+        "home_name": home_name or "",
+        "away_name": away_name or "",
         "venue": (
             venue_of(record)
             or venue_of(summary)
@@ -1578,7 +1608,9 @@ def fixture_graphic(rows, settings):
     card_h = max(185, (bottom-top-gap*(n-1))//max(1,n))
     for i, row in enumerate(rows):
         y = top + i*(card_h+gap)
-        home, away = fixture_split_teams(row)
+        home, away = (row.get("home_name"), row.get("away_name"))
+        if not home or not away:
+            home, away = fixture_split_teams(row)
         hc = fixture_find_club(home); ac = fixture_find_club(away)
         d.rounded_rectangle((68,y,1012,y+card_h), radius=24, fill=(12,27,55), outline=(245,184,46), width=3)
         d.rounded_rectangle((80,y+12,1000,y+card_h-12), radius=15, outline=(61,83,121), width=2)
@@ -1586,8 +1618,8 @@ def fixture_graphic(rows, settings):
         # Club art fills the full height of each matchup card and deliberately
         # bleeds beyond the side edge, like the NBA reference.
         logo_y = y + card_h / 2
-        logo_size = int(card_h * float(settings.get("logo_scale", 1.48)))
-        bleed = int(settings.get("logo_bleed", 38))
+        logo_size = int(card_h * float(settings.get("logo_scale", 2.35)))
+        bleed = int(settings.get("logo_bleed", 115))
         clip = (70, y + 4, 1010, y + card_h - 4)
         fixture_logo_paste(background, hc, (70 + logo_size / 2 - bleed, logo_y), logo_size, clip)
         fixture_logo_paste(background, ac, (1010 - logo_size / 2 + bleed, logo_y), logo_size, clip)
@@ -1644,8 +1676,8 @@ def fixture_admin():
     cfg["cards_top"] = st.slider("First match position", 195, 380, int(cfg["cards_top"]))
     cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg["cards_bottom"]))
     cfg["yellow"] = st.color_picker("Accent colour", cfg["yellow"])
-    cfg["logo_scale"] = st.slider("Club visual size", 1.0, 2.2, float(cfg.get("logo_scale", 1.48)), 0.05)
-    cfg["logo_bleed"] = st.slider("Logo side cropping", 0, 120, int(cfg.get("logo_bleed", 38)))
+    cfg["logo_scale"] = st.slider("Club visual size", 1.0, 3.2, float(cfg.get("logo_scale", 2.35)), 0.05)
+    cfg["logo_bleed"] = st.slider("Logo side cropping", 0, 240, int(cfg.get("logo_bleed", 115)))
     cfg["background"] = st.selectbox("Background", ["Red to navy gradient", "HBCC existing template"], index=["Red to navy gradient", "HBCC existing template"].index(cfg["background"]))
     st.download_button("Download template settings JSON", json.dumps(cfg, indent=2), "fixture_template_settings.json", "application/json")
     st.divider()
@@ -1691,7 +1723,7 @@ def fixture_admin():
 def fixture_publisher(chosen):
     st.caption(f"{len(chosen)} matches selected · Instagram portrait 1080 × 1350 · up to 3 fixtures per graphic")
     if "fixture_graphic_settings" not in st.session_state:
-        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.48, "logo_bleed":38}
+        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":2.35, "logo_bleed":115}
     fixture_library()
     if "fixture_view" not in st.session_state:
         st.session_state.fixture_view = "graphics"
