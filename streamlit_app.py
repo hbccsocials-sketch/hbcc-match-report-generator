@@ -1755,7 +1755,7 @@ def fixture_publisher(chosen):
         resolved.append(row)
     chosen = resolved
     edited = []
-    with st.expander("Edit fixture details or team names", expanded=False):
+    with st.expander("Fixture adjustments — home/away and details", expanded=False):
         for i,row in enumerate(chosen):
             home = row.get("home_name") or fixture_split_teams(row)[0]
             away = row.get("away_name") or fixture_split_teams(row)[1]
@@ -1763,7 +1763,16 @@ def fixture_publisher(chosen):
             c1,c2=st.columns(2)
             home=c1.text_input("Home team",home,key=f"fix_home_{row['id']}")
             away=c2.text_input("Away team",away,key=f"fix_away_{row['id']}")
-            st.checkbox("Swap home and away", key=f"fix_swap_{row['id']}", help="Use if PlayCricket displays the teams in the wrong home/away order.")
+            # Explicit editorial decision: never rely on unreliable API ordering.
+            st.radio(
+                "Where is HBCC playing?",
+                options=["HBCC home", "HBCC away", "Choose left team manually"],
+                index=2,
+                key=f"fix_side_{row['id']}",
+                horizontal=True,
+                help="HBCC home places the Hawks on the left. HBCC away places the Hawks on the right.",
+            )
+            st.caption("If PlayCricket's team order is incorrect, this selection controls the published graphic.")
             c3,c4=st.columns(2)
             venue=c3.text_input("Venue",row.get("venue") or "Venue TBC",key=f"fix_venue_{row['id']}")
             date_value=c4.text_input("Dates (separate with &)"," & ".join(row.get("playing_dates") or [row.get("date", "")]),key=f"fix_date_{row['id']}")
@@ -1778,8 +1787,25 @@ def fixture_publisher(chosen):
         away=row.get("away_name") or fixture_split_teams(row)[1]
         home=st.session_state.get(f"fix_home_{mid}",home)
         away=st.session_state.get(f"fix_away_{mid}",away)
-        if st.session_state.get(f"fix_swap_{mid}",False):
-            home,away=away,home
+        side = st.session_state.get(f"fix_side_{mid}", "Choose left team manually")
+        def is_hbcc(team):
+            cleaned = re.sub(r"[^a-z0-9]", "", str(team).lower())
+            return "hawthornboroondara" in cleaned or cleaned.startswith("hbcc")
+        if side in ("HBCC home", "HBCC away"):
+            if is_hbcc(home) and not is_hbcc(away):
+                hawks, opponent = home, away
+            elif is_hbcc(away) and not is_hbcc(home):
+                hawks, opponent = away, home
+            else:
+                # Team-name fields may contain an abbreviation or typo. Use
+                # the original fixture names to recover the actual HBCC team.
+                originals = fixture_split_teams(row)
+                hawks = next((team for team in originals if is_hbcc(team)), None)
+                opponent = next((team for team in (home, away) if not is_hbcc(team)), None)
+                if hawks is None or opponent is None:
+                    st.warning(f"Check HBCC team names for {row.get('grade', 'this fixture')}: unable to determine the Hawks and opponent.")
+                    hawks, opponent = home, away
+            home, away = (hawks, opponent) if side == "HBCC home" else (opponent, hawks)
         dates=st.session_state.get(f"fix_date_{mid}"," & ".join(row.get("playing_dates") or [row.get("date", "")]))
         rows.append({**row,"home_name":home,"away_name":away,"name":f"{home} vs {away}","venue":st.session_state.get(f"fix_venue_{mid}",row.get("venue") or "Venue TBC"),"playing_dates":[x.strip() for x in dates.split("&") if x.strip()]})
     missing=sorted({name for row in rows for name in fixture_split_teams(row) if not fixture_find_club(name)})
