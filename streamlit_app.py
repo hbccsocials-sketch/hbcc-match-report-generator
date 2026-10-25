@@ -1430,6 +1430,297 @@ Return only the complete finished article.
     )
 
 
+
+# ============================================================
+# UPCOMING FIXTURE GRAPHICS AND CLUB VISUAL LIBRARY
+# ============================================================
+import unicodedata
+
+FIXTURE_LIBRARY_DIR = Path(__file__).resolve().parent / "club_visuals"
+FIXTURE_LIBRARY_MANIFEST = FIXTURE_LIBRARY_DIR / "clubs.json"
+FIXTURE_SIZE = (1080, 1350)
+
+
+def fixture_key(value):
+    value = unicodedata.normalize("NFKD", str(value or "")).casefold()
+    value = re.sub(r"\b(?:women'?s|mens|men'?s|seniors?|juniors?|first|second|third|fourth|fifth|sixth|1st|2nd|3rd|4th|5th|6th|xi|cricket|club|cc)\b", " ", value)
+    return re.sub(r"[^a-z0-9]", "", value)
+
+
+def fixture_library():
+    if "fixture_clubs" not in st.session_state:
+        records = []
+        if FIXTURE_LIBRARY_MANIFEST.exists():
+            try:
+                records = json.loads(FIXTURE_LIBRARY_MANIFEST.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                records = []
+        st.session_state.fixture_clubs = records if isinstance(records, list) else []
+    if "fixture_uploaded_logos" not in st.session_state:
+        st.session_state.fixture_uploaded_logos = {}
+    return st.session_state.fixture_clubs
+
+
+def fixture_logo_bytes(entry):
+    filename = Path(str(entry.get("file", ""))).name
+    if filename in st.session_state.fixture_uploaded_logos:
+        return st.session_state.fixture_uploaded_logos[filename]
+    file_path = FIXTURE_LIBRARY_DIR / filename
+    if filename and file_path.is_file():
+        return file_path.read_bytes()
+    return None
+
+
+def fixture_find_club(name):
+    key = fixture_key(name)
+    if not key:
+        return None
+    clubs = fixture_library()
+    exact = [x for x in clubs if fixture_key(x.get("name")) == key or any(fixture_key(a) == key for a in x.get("aliases", []))]
+    return exact[0] if exact else None
+
+
+def fixture_split_teams(row):
+    label = str(row.get("name", ""))
+    parts = re.split(r"\s+vs\.?\s+", label, maxsplit=1, flags=re.I)
+    if len(parts) == 2:
+        return parts
+    return ("Home team", "Away team")
+
+
+def fixture_abbrev(name, club=None):
+    if club and club.get("abbr"):
+        return str(club["abbr"]).upper()[:8]
+    words = re.findall(r"[A-Za-z0-9]+", str(name))
+    words = [w for w in words if w.lower() not in ("xi", "1st", "2nd", "3rd", "4th", "cc", "cricket", "club")]
+    return ("".join(w[0] for w in words[:4]) or "TEAM").upper()
+
+
+def fixture_font(size, bold=False):
+    paths = [Path(__file__).resolve().parent / "ITC Franklin Gothic LT Medium.otf", Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf") if bold else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")]
+    for path in paths:
+        if path.exists():
+            try:
+                return ImageFont.truetype(str(path), int(size))
+            except OSError:
+                pass
+    return ImageFont.load_default()
+
+
+def fixture_text_fit(draw, text, max_width, max_size, min_size=18, bold=False):
+    for size in range(max_size, min_size - 1, -2):
+        font = fixture_font(size, bold)
+        if draw.textbbox((0, 0), text, font=font)[2] <= max_width:
+            return font
+    return fixture_font(min_size, bold)
+
+
+def fixture_center(draw, x, y, text, font, fill):
+    box = draw.textbbox((0, 0), text, font=font)
+    draw.text((int(x - (box[2] - box[0]) / 2), int(y)), text, font=font, fill=fill)
+
+
+def fixture_logo_paste(image, entry, center, size=140):
+    if not entry:
+        return
+    raw = fixture_logo_bytes(entry)
+    if not raw:
+        return
+    try:
+        logo = Image.open(io.BytesIO(raw)).convert("RGBA")
+        logo.thumbnail((size, size), Image.Resampling.LANCZOS)
+        x, y = center
+        image.paste(logo, (int(x - logo.width / 2), int(y - logo.height / 2)), logo)
+    except (OSError, ValueError):
+        return
+
+
+def fixture_graphic(rows, settings):
+    w, h = FIXTURE_SIZE
+    background = Image.new("RGB", (w, h), "#101b33")
+    d = ImageDraw.Draw(background)
+    for y in range(h):
+        t = y / h
+        a = (165, 12, 35); b = (14, 25, 47)
+        d.line((0, y, w, y), fill=tuple(int(a[i] * (1-t) + b[i]*t) for i in range(3)))
+    # Reuse the existing HBCC graphic background if requested.
+    if settings.get("background") == "HBCC existing template" and DEFAULT_TEMPLATE.exists():
+        background = Image.open(DEFAULT_TEMPLATE).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+    d = ImageDraw.Draw(background)
+    yellow = settings.get("yellow", "#f5b82e")
+    white = "#ffffff"
+    d.line((55, 45, 112, 45), fill=yellow, width=6)
+    d.line((55, 45, 55, 100), fill=yellow, width=6)
+    d.line((w-112, 45, w-55, 45), fill=yellow, width=6)
+    d.line((w-55, 45, w-55, 100), fill=yellow, width=6)
+    heading = settings.get("title", "UPCOMING MATCHES")
+    fixture_center(d, w//2, 78, heading, fixture_text_fit(d, heading, w-115, int(settings.get("title_size", 90)), 42, True), yellow)
+    n = len(rows)
+    top = int(settings.get("cards_top", 255))
+    bottom = int(settings.get("cards_bottom", 1175))
+    gap = 24
+    card_h = max(185, (bottom-top-gap*(n-1))//max(1,n))
+    for i, row in enumerate(rows):
+        y = top + i*(card_h+gap)
+        home, away = fixture_split_teams(row)
+        hc = fixture_find_club(home); ac = fixture_find_club(away)
+        d.rounded_rectangle((68,y,1012,y+card_h), radius=24, fill=(12,27,55), outline=(245,184,46), width=3)
+        d.rounded_rectangle((80,y+12,1000,y+card_h-12), radius=15, outline=(61,83,121), width=2)
+        logo_y = y + card_h*0.48
+        fixture_logo_paste(background, hc, (188,logo_y), min(158,card_h-45))
+        fixture_logo_paste(background, ac, (892,logo_y), min(158,card_h-45))
+        # Render logos before lettering to preserve legibility.
+        d = ImageDraw.Draw(background)
+        hf = fixture_text_fit(d, fixture_abbrev(home,hc), 185, 65, 27, True)
+        af = fixture_text_fit(d, fixture_abbrev(away,ac), 185, 65, 27, True)
+        fixture_center(d, 380, y+38, fixture_abbrev(home,hc), hf, white)
+        fixture_center(d, 700, y+38, fixture_abbrev(away,ac), af, white)
+        fixture_center(d, 540, y+42, "VS", fixture_font(35,True), yellow)
+        date_str = " & ".join(row.get("playing_dates") or [row.get("date", "")])
+        details = [date_str, str(row.get("venue") or "Venue TBC"), str(row.get("grade") or "")]
+        for j, line in enumerate(details):
+            maxw = 420 if j == 1 else 490
+            font = fixture_text_fit(d, line, maxw, 27 if j == 0 else 22, 15, j==0)
+            fixture_center(d, 540, y+102+j*29, line, font, yellow if j==0 else white)
+        for x, name, club in ((188,home,hc),(892,away,ac)):
+            label = club.get("name",name) if club else name
+            fixture_center(d, x, y+card_h-42, label, fixture_text_fit(d,label,205,20,12), white)
+    footer = "HAWTHORN BOROONDARA CRICKET CLUB"
+    fixture_center(d, w//2, 1250, footer, fixture_font(24,True), yellow)
+    return background
+
+
+def fixture_asset_export():
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("clubs.json", json.dumps(fixture_library(), indent=2))
+        for club in fixture_library():
+            raw = fixture_logo_bytes(club)
+            if raw:
+                z.writestr(Path(str(club["file"])).name, raw)
+    return out.getvalue()
+
+
+def fixture_admin():
+    st.markdown("#### Fixture Template Manager")
+    secret = str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
+    if not secret:
+        st.warning("Set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets to enable editing.")
+        return
+    password = st.text_input("Admin password", type="password", key="fixture_admin_password")
+    if not password or not hmac.compare_digest(password, secret):
+        if password:
+            st.error("Incorrect password")
+        return
+    st.success("Admin access granted")
+    cfg = st.session_state.fixture_graphic_settings
+    cfg["title"] = st.text_input("Graphic heading", cfg["title"])
+    cfg["title_size"] = st.slider("Heading size", 42, 115, int(cfg["title_size"]))
+    cfg["cards_top"] = st.slider("First match position", 195, 380, int(cfg["cards_top"]))
+    cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg["cards_bottom"]))
+    cfg["yellow"] = st.color_picker("Accent colour", cfg["yellow"])
+    cfg["background"] = st.selectbox("Background", ["Red to navy gradient", "HBCC existing template"], index=["Red to navy gradient", "HBCC existing template"].index(cfg["background"]))
+    st.download_button("Download template settings JSON", json.dumps(cfg, indent=2), "fixture_template_settings.json", "application/json")
+    st.divider()
+    st.markdown("#### Club visual directory")
+    st.caption("Upload the actual PNG/JPG club visuals, not a screenshot of the Canva grid. Each club has a name, abbreviation, optional aliases and image.")
+    with st.form("fixture_add_club", clear_on_submit=True):
+        name = st.text_input("Club full name")
+        abbr = st.text_input("Club abbreviation (e.g. HBCC, DET)")
+        aliases = st.text_input("Alternative names, separated by commas")
+        upload = st.file_uploader("Club visual PNG/JPG", type=["png","jpg","jpeg","webp"])
+        save = st.form_submit_button("Add or update club", type="primary")
+        if save:
+            if not name.strip() or not upload:
+                st.error("Provide a club name and an image.")
+            else:
+                try:
+                    Image.open(io.BytesIO(upload.getvalue())).verify()
+                    filename = re.sub(r"[^a-z0-9]+", "_", name.casefold()).strip("_") + ".png"
+                    logo = Image.open(io.BytesIO(upload.getvalue())).convert("RGBA")
+                    output = io.BytesIO(); logo.save(output, format="PNG")
+                    st.session_state.fixture_uploaded_logos[filename] = output.getvalue()
+                    records = fixture_library()
+                    records[:] = [x for x in records if fixture_key(x.get("name")) != fixture_key(name)]
+                    records.append({"name":name.strip(), "abbr":abbr.strip(), "aliases":[a.strip() for a in aliases.split(",") if a.strip()], "file":filename})
+                    st.success(f"Saved {name} for this session. Download the ZIP to make it permanent.")
+                except (OSError, ValueError):
+                    st.error("This image could not be read.")
+    clubs = fixture_library()
+    st.caption(f"{len(clubs)} club visuals in the library")
+    if clubs:
+        choice = st.selectbox("Manage a club", range(len(clubs)), format_func=lambda i:clubs[i].get("name", "Club"))
+        c = clubs[choice]
+        st.write(f"**{c.get('name')}** · {c.get('abbr','')} · aliases: {', '.join(c.get('aliases',[])) or 'none'}")
+        raw = fixture_logo_bytes(c)
+        if raw:
+            st.image(raw, width=140)
+        if st.button("Delete selected club visual"):
+            clubs.pop(choice); st.rerun()
+    st.download_button("Download club visual database (ZIP)", fixture_asset_export(), "club_visuals.zip", "application/zip", type="primary", use_container_width=True)
+    st.info("To preserve additions after a Streamlit restart, unzip this export into a 'club_visuals' folder beside streamlit_app.py in GitHub. This creates club_visuals/clubs.json and the image files. Session uploads alone are temporary.")
+
+
+def fixture_publisher(chosen):
+    st.caption(f"{len(chosen)} matches selected · Instagram portrait 1080 × 1350 · up to 3 fixtures per graphic")
+    if "fixture_graphic_settings" not in st.session_state:
+        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient"}
+    fixture_library()
+    if "fixture_view" not in st.session_state:
+        st.session_state.fixture_view = "graphics"
+    a,b = st.columns(2)
+    if a.button("Upcoming fixture graphics", use_container_width=True, type="primary" if st.session_state.fixture_view=="graphics" else "secondary"):
+        st.session_state.fixture_view="graphics"; st.rerun()
+    if b.button("Fixture Template Manager", use_container_width=True, type="primary" if st.session_state.fixture_view=="admin" else "secondary"):
+        st.session_state.fixture_view="admin"; st.rerun()
+    if st.session_state.fixture_view == "admin":
+        fixture_admin(); return
+    st.markdown("#### Upcoming fixture graphic generator")
+    st.caption("Fixture details come from PlayCricket. You can correct any field before generating. Club logos are matched from your visual directory.")
+    edited = []
+    with st.expander("Edit fixture details or team names", expanded=False):
+        for i,row in enumerate(chosen):
+            home,away = fixture_split_teams(row)
+            st.markdown(f"**{row.get('grade','Match')} — {home} vs {away}**")
+            c1,c2=st.columns(2)
+            home=c1.text_input("Home team",home,key=f"fix_home_{row['id']}")
+            away=c2.text_input("Away team",away,key=f"fix_away_{row['id']}")
+            c3,c4=st.columns(2)
+            venue=c3.text_input("Venue",row.get("venue") or "Venue TBC",key=f"fix_venue_{row['id']}")
+            date_value=c4.text_input("Dates (separate with &)"," & ".join(row.get("playing_dates") or [row.get("date", "")]),key=f"fix_date_{row['id']}")
+            edited.append({**row,"name":f"{home} vs {away}","venue":venue,"playing_dates":[x.strip() for x in date_value.split("&") if x.strip()]})
+    if not edited:
+        edited = chosen
+    # Keep edits from widgets after expander closes.
+    rows=[]
+    for row in chosen:
+        mid=row['id']
+        home,away=fixture_split_teams(row)
+        home=st.session_state.get(f"fix_home_{mid}",home)
+        away=st.session_state.get(f"fix_away_{mid}",away)
+        dates=st.session_state.get(f"fix_date_{mid}"," & ".join(row.get("playing_dates") or [row.get("date", "")]))
+        rows.append({**row,"name":f"{home} vs {away}","venue":st.session_state.get(f"fix_venue_{mid}",row.get("venue") or "Venue TBC"),"playing_dates":[x.strip() for x in dates.split("&") if x.strip()]})
+    missing=sorted({name for row in rows for name in fixture_split_teams(row) if not fixture_find_club(name)})
+    if missing:
+        st.warning(f"No matching logo for {len(missing)} team name(s): {', '.join(missing[:7])}{'…' if len(missing)>7 else ''}. Text abbreviations will be shown until you add visuals in Template Manager.")
+    groups=[rows[i:i+3] for i in range(0,len(rows),3)]
+    if not groups:
+        st.info("Select at least one fixture."); return
+    imgs=[fixture_graphic(group, st.session_state.fixture_graphic_settings) for group in groups]
+    st.markdown(f"**{len(imgs)} graphics ready**")
+    gallery=st.columns(min(3,len(imgs)))
+    zipped=io.BytesIO()
+    with zipfile.ZipFile(zipped,"w",zipfile.ZIP_DEFLATED) as archive:
+        for i,img in enumerate(imgs):
+            blob=io.BytesIO();img.save(blob,format="PNG")
+            filename=f"hbcc_upcoming_matches_{i+1:02}.png"
+            archive.writestr(filename,blob.getvalue())
+            with gallery[i%len(gallery)]:
+                st.image(blob.getvalue(), caption=f"Graphic {i+1} · {len(groups[i])} fixtures", use_container_width=True)
+                st.download_button(f"Download graphic {i+1}",blob.getvalue(),filename,"image/png",key=f"download_fixture_{i}",use_container_width=True)
+    st.download_button("Download all fixture graphics (ZIP)",zipped.getvalue(),"hbcc_upcoming_matches.zip","application/zip",type="primary",use_container_width=True)
+
+
 # ============================================================
 # SESSION STATE
 # ============================================================
@@ -1623,7 +1914,8 @@ if stage == "setup":
     modes = [
         "Match Report",
         "Weekend Wrap",
-        "Team Selections"
+        "Team Selections",
+        "Upcoming Fixtures"
     ]
 
     mode_descriptions = {
@@ -1635,10 +1927,13 @@ if stage == "setup":
         ),
         "Team Selections": (
             "Published players across grades"
+        ),
+        "Upcoming Fixtures": (
+            "Create upcoming match graphics with club logos"
         )
     }
 
-    mode_columns = st.columns(3)
+    mode_columns = st.columns(4)
 
     for column, option in zip(
         mode_columns,
@@ -2487,6 +2782,9 @@ else:
                 "before publishing."
             )
 
+    elif mode == "Upcoming Fixtures":
+        fixture_publisher(chosen)
+
     else:
         if st.button(
             "Retrieve Selected Teams",
@@ -2682,7 +2980,7 @@ else:
             st.divider()
 
             if st.session_state.team_publish_view == "graphics":
-                st.markdown("#### Instagram Graphic Generator")
+                st.markdown("#### Instagram graphic generator")
                 st.caption(
                     "Each selected team becomes its own 1080 × 1350 Instagram graphic "
                     "using the HBCC background and ITC Franklin Gothic LT Medium. "
@@ -2757,7 +3055,7 @@ else:
             if st.session_state.team_publish_view == "template":
                 st.markdown("#### Template Manager")
                 st.caption("Admin access required to change the graphic template and typography.")
-                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947!")
+                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
                 if not admin_password:
                     st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
                 else:
