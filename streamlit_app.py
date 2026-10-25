@@ -1614,8 +1614,9 @@ def fixture_graphic(rows, settings):
         bleed=int(settings.get("logo_bleed",55))
         left_zone=(71,y+4,305,y+card_h-4)
         right_zone=(775,y+4,1009,y+card_h-4)
-        fixture_logo_paste(background,hc,(71+size/2-bleed,y+card_h/2),size,left_zone)
-        fixture_logo_paste(background,ac,(1009-size/2+bleed,y+card_h/2),size,right_zone)
+        # Centre the visual in each side panel, rather than pinning it to the inner edge.
+        fixture_logo_paste(background,hc,((left_zone[0]+left_zone[2])/2,y+card_h/2),size,left_zone)
+        fixture_logo_paste(background,ac,((right_zone[0]+right_zone[2])/2,y+card_h/2),size,right_zone)
         d=ImageDraw.Draw(background)
         # Semi-opaque centre provides guaranteed legibility, even with vivid club art.
         d.rectangle((305,y+5,775,y+card_h-5),fill="#0c1b37")
@@ -1628,8 +1629,8 @@ def fixture_graphic(rows, settings):
         fixture_center(d,188,y+card_h-30,hname,fixture_text_fit(d,hname,222,17,11,True),"#ffffff")
         fixture_center(d,892,y+card_h-30,aname,fixture_text_fit(d,aname,222,17,11,True),"#ffffff")
         hab=fixture_abbrev(home,hc); aab=fixture_abbrev(away,ac)
-        fixture_center(d,405,y+28,hab,fixture_text_fit(d,hab,145,47,25,True),"#ffffff")
-        fixture_center(d,675,y+28,aab,fixture_text_fit(d,aab,145,47,25,True),"#ffffff")
+        fixture_center(d,405,y+24,hab,fixture_text_fit(d,hab,155,57,28,True),"#ffffff")
+        fixture_center(d,675,y+24,aab,fixture_text_fit(d,aab,155,57,28,True),"#ffffff")
         fixture_center(d,540,y+34,"VS",fixture_font(27,True),yellow)
         date_str=" & ".join(row.get("playing_dates") or [row.get("date","")])
         # Responsive vertical spacing: all details must remain inside the card.
@@ -1639,6 +1640,9 @@ def fixture_graphic(rows, settings):
         for j,line in enumerate(details):
             font=fixture_text_fit(d,line,448,25 if j==0 else 21,14,j==0)
             fixture_center(d,540,base+j*step,line,font,yellow if j==0 else "#ffffff")
+        # Draw the outline last, above the artwork and label strips. This prevents
+        # the square cropped visuals from covering the yellow left/right borders.
+        d.rounded_rectangle((68,y,1012,y+card_h),radius=24,outline=yellow,width=4)
     fixture_center(d,w//2,1250,"HAWTHORN BOROONDARA CRICKET CLUB",fixture_font(24,True),yellow)
     return background
 
