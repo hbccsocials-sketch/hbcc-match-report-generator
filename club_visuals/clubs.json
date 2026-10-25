@@ -1,1 +1,322 @@
-
+[
+  {
+    "name": "Hawthorn Boroondara",
+    "abbr": "HBCC",
+    "aliases": [
+      "Hawthorn Boroondara Cricket Club",
+      "HBCC"
+    ],
+    "file": "hawthorn_boroondara.jpg"
+  },
+  {
+    "name": "Mont Albert",
+    "abbr": "",
+    "aliases": [],
+    "file": "mont_albert.jpg"
+  },
+  {
+    "name": "Edinburgh",
+    "abbr": "",
+    "aliases": [],
+    "file": "edinburgh.jpg"
+  },
+  {
+    "name": "East Malvern Tooronga",
+    "abbr": "EMT",
+    "aliases": [],
+    "file": "east_malvern_tooronga.jpg"
+  },
+  {
+    "name": "North Balwyn",
+    "abbr": "",
+    "aliases": [],
+    "file": "north_balwyn.jpg"
+  },
+  {
+    "name": "Glen Iris",
+    "abbr": "",
+    "aliases": [],
+    "file": "glen_iris.jpg"
+  },
+  {
+    "name": "Heathmont",
+    "abbr": "",
+    "aliases": [],
+    "file": "heathmont.jpg"
+  },
+  {
+    "name": "East Doncaster",
+    "abbr": "",
+    "aliases": [],
+    "file": "east_doncaster.jpg"
+  },
+  {
+    "name": "Old Carey",
+    "abbr": "",
+    "aliases": [],
+    "file": "old_carey.jpg"
+  },
+  {
+    "name": "Canterbury",
+    "abbr": "",
+    "aliases": [],
+    "file": "canterbury.jpg"
+  },
+  {
+    "name": "Mazenod OC",
+    "abbr": "",
+    "aliases": [],
+    "file": "mazenod_oc.jpg"
+  },
+  {
+    "name": "Ashburton Willows",
+    "abbr": "",
+    "aliases": [],
+    "file": "ashburton_willows.jpg"
+  },
+  {
+    "name": "Mulgrave",
+    "abbr": "",
+    "aliases": [],
+    "file": "mulgrave.jpg"
+  },
+  {
+    "name": "Bulleen",
+    "abbr": "BCC",
+    "aliases": [],
+    "file": "bulleen.jpg"
+  },
+  {
+    "name": "Richmond City",
+    "abbr": "",
+    "aliases": [],
+    "file": "richmond_city.jpg"
+  },
+  {
+    "name": "Surrey Hills",
+    "abbr": "",
+    "aliases": [],
+    "file": "surrey_hills.jpg"
+  },
+  {
+    "name": "Marcellin OC",
+    "abbr": "",
+    "aliases": [],
+    "file": "marcellin_oc.jpg"
+  },
+  {
+    "name": "Boronia",
+    "abbr": "",
+    "aliases": [],
+    "file": "boronia.jpg"
+  },
+  {
+    "name": "Burwood",
+    "abbr": "",
+    "aliases": [],
+    "file": "burwood.jpg"
+  },
+  {
+    "name": "Deepdene Bears",
+    "abbr": "",
+    "aliases": [],
+    "file": "deepdene_bears.jpg"
+  },
+  {
+    "name": "Ashwood",
+    "abbr": "",
+    "aliases": [],
+    "file": "ashwood.jpg"
+  },
+  {
+    "name": "Balwyn Saints",
+    "abbr": "BSCC",
+    "aliases": [],
+    "file": "balwyn_saints.jpg"
+  },
+  {
+    "name": "Richmond Union",
+    "abbr": "",
+    "aliases": [],
+    "file": "richmond_union.jpg"
+  },
+  {
+    "name": "St Kevins Old Boys",
+    "abbr": "SKOB",
+    "aliases": [
+      "St. Kevins Old Boys",
+      "St Kevins Old Boys Cricket Club"
+    ],
+    "file": "st_kevins_old_boys.jpg"
+  },
+  {
+    "name": "Whitefriars",
+    "abbr": "",
+    "aliases": [],
+    "file": "whitefriars.jpg"
+  },
+  {
+    "name": "La Trobe University",
+    "abbr": "",
+    "aliases": [],
+    "file": "la_trobe_university.jpg"
+  },
+  {
+    "name": "St Pauls Oakleigh",
+    "abbr": "",
+    "aliases": [],
+    "file": "st_pauls_oakleigh.jpg"
+  },
+  {
+    "name": "Malvern Valley",
+    "abbr": "",
+    "aliases": [],
+    "file": "malvern_valley.jpg"
+  },
+  {
+    "name": "St Andrews Gardiner",
+    "abbr": "",
+    "aliases": [],
+    "file": "st_andrews_gardiner.jpg"
+  },
+  {
+    "name": "Knox City",
+    "abbr": "",
+    "aliases": [],
+    "file": "knox_city.jpg"
+  },
+  {
+    "name": "STC South Camberwell",
+    "abbr": "",
+    "aliases": [],
+    "file": "stc_south_camberwell.jpg"
+  },
+  {
+    "name": "Melbourne Deaf",
+    "abbr": "",
+    "aliases": [],
+    "file": "melbourne_deaf.jpg"
+  },
+  {
+    "name": "West Ivanhoe United",
+    "abbr": "",
+    "aliases": [],
+    "file": "west_ivanhoe_united.jpg"
+  },
+  {
+    "name": "Clifton Hill",
+    "abbr": "CHCC",
+    "aliases": [],
+    "file": "clifton_hill.jpg"
+  },
+  {
+    "name": "Burnley CYMS",
+    "abbr": "",
+    "aliases": [],
+    "file": "burnley_cyms.jpg"
+  },
+  {
+    "name": "Preston Baseballers",
+    "abbr": "",
+    "aliases": [],
+    "file": "preston_baseballers.jpg"
+  },
+  {
+    "name": "Holy Trinity",
+    "abbr": "",
+    "aliases": [],
+    "file": "holy_trinity.jpg"
+  },
+  {
+    "name": "Endeavor Hills",
+    "abbr": "",
+    "aliases": [],
+    "file": "endeavor_hills.jpg"
+  },
+  {
+    "name": "Doveton",
+    "abbr": "",
+    "aliases": [],
+    "file": "doveton.jpg"
+  },
+  {
+    "name": "Donvale",
+    "abbr": "",
+    "aliases": [],
+    "file": "donvale.jpg"
+  },
+  {
+    "name": "North Alphington",
+    "abbr": "",
+    "aliases": [],
+    "file": "north_alphington.jpg"
+  },
+  {
+    "name": "Dingley",
+    "abbr": "",
+    "aliases": [],
+    "file": "dingley.jpg"
+  },
+  {
+    "name": "South East",
+    "abbr": "",
+    "aliases": [],
+    "file": "south_east.jpg"
+  },
+  {
+    "name": "Ivanhoe Saints",
+    "abbr": "",
+    "aliases": [],
+    "file": "ivanhoe_saints.jpg"
+  },
+  {
+    "name": "Mt Waverley",
+    "abbr": "",
+    "aliases": [
+      "Mount Waverley"
+    ],
+    "file": "mt_waverley.jpg"
+  },
+  {
+    "name": "Alphington United",
+    "abbr": "",
+    "aliases": [],
+    "file": "alphington_united.jpg"
+  },
+  {
+    "name": "Burwood Uniting Canterbury",
+    "abbr": "",
+    "aliases": [],
+    "file": "burwood_uniting_canterbury.jpg"
+  },
+  {
+    "name": "Toorak Prahran",
+    "abbr": "",
+    "aliases": [],
+    "file": "toorak_prahran.jpg"
+  },
+  {
+    "name": "Deepdene Uniting",
+    "abbr": "",
+    "aliases": [],
+    "file": "deepdene_uniting.jpg"
+  },
+  {
+    "name": "Trinity Willson",
+    "abbr": "",
+    "aliases": [],
+    "file": "trinity_willson.jpg"
+  },
+  {
+    "name": "Blackburn North United",
+    "abbr": "",
+    "aliases": [],
+    "file": "blackburn_north_united.jpg"
+  },
+  {
+    "name": "Mount Waverley Uniting",
+    "abbr": "",
+    "aliases": [],
+    "file": "mount_waverley_uniting.jpg"
+  }
+]
