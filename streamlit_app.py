@@ -1582,68 +1582,64 @@ def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
 
 
 def fixture_graphic(rows, settings):
+    """NBA-inspired panels with bounded artwork and a dedicated text column."""
     w, h = FIXTURE_SIZE
     background = Image.new("RGB", (w, h), "#101b33")
     d = ImageDraw.Draw(background)
-    for y in range(h):
-        t = y / h
-        a = (165, 12, 35); b = (14, 25, 47)
-        d.line((0, y, w, y), fill=tuple(int(a[i] * (1-t) + b[i]*t) for i in range(3)))
-    # Reuse the existing HBCC graphic background if requested.
+    for yy in range(h):
+        t = yy / h
+        a, b = (165, 12, 35), (14, 25, 47)
+        d.line((0, yy, w, yy), fill=tuple(int(a[k]*(1-t)+b[k]*t) for k in range(3)))
     if settings.get("background") == "HBCC existing template" and DEFAULT_TEMPLATE.exists():
-        background = Image.open(DEFAULT_TEMPLATE).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+        background = Image.open(DEFAULT_TEMPLATE).convert("RGB").resize((w,h), Image.Resampling.LANCZOS)
     d = ImageDraw.Draw(background)
     yellow = settings.get("yellow", "#f5b82e")
-    white = "#ffffff"
-    d.line((55, 45, 112, 45), fill=yellow, width=6)
-    d.line((55, 45, 55, 100), fill=yellow, width=6)
-    d.line((w-112, 45, w-55, 45), fill=yellow, width=6)
-    d.line((w-55, 45, w-55, 100), fill=yellow, width=6)
-    heading = settings.get("title", "UPCOMING MATCHES")
-    fixture_center(d, w//2, 78, heading, fixture_text_fit(d, heading, w-115, int(settings.get("title_size", 90)), 42, True), yellow)
-    n = len(rows)
-    top = int(settings.get("cards_top", 255))
-    bottom = int(settings.get("cards_bottom", 1175))
-    gap = 24
-    card_h = max(185, (bottom-top-gap*(n-1))//max(1,n))
-    for i, row in enumerate(rows):
-        y = top + i*(card_h+gap)
-        home, away = (row.get("home_name"), row.get("away_name"))
-        if not home or not away:
-            home, away = fixture_split_teams(row)
-        hc = fixture_find_club(home); ac = fixture_find_club(away)
-        d.rounded_rectangle((68,y,1012,y+card_h), radius=24, fill=(12,27,55), outline=(245,184,46), width=3)
-        d.rounded_rectangle((80,y+12,1000,y+card_h-12), radius=15, outline=(61,83,121), width=2)
-        # Home team is always the left side, away team always the right.
-        # Club art fills the full height of each matchup card and deliberately
-        # bleeds beyond the side edge, like the NBA reference.
-        logo_y = y + card_h / 2
-        logo_size = int(card_h * float(settings.get("logo_scale", 2.35)))
-        bleed = int(settings.get("logo_bleed", 115))
-        clip = (70, y + 4, 1010, y + card_h - 4)
-        fixture_logo_paste(background, hc, (70 + logo_size / 2 - bleed, logo_y), logo_size, clip)
-        fixture_logo_paste(background, ac, (1010 - logo_size / 2 + bleed, logo_y), logo_size, clip)
-        # Darken the middle for legible names, date and venue.
-        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        shade = ImageDraw.Draw(overlay)
-        for xx in range(265, 816, 5):
-            strength = max(0, min(185, int(185 - abs(xx - 540) * 0.36)))
-            shade.rectangle((xx, y + 5, xx + 5, y + card_h - 5), fill=(8, 19, 39, strength))
-        background = Image.alpha_composite(background.convert("RGBA"), overlay).convert("RGB")
-        d = ImageDraw.Draw(background)
-        hf = fixture_text_fit(d, fixture_abbrev(home,hc), 165, 61, 27, True)
-        af = fixture_text_fit(d, fixture_abbrev(away,ac), 165, 61, 27, True)
-        fixture_center(d, 375, y+34, fixture_abbrev(home,hc), hf, white)
-        fixture_center(d, 705, y+34, fixture_abbrev(away,ac), af, white)
-        fixture_center(d, 540, y+42, "VS", fixture_font(35,True), yellow)
-        date_str = " & ".join(row.get("playing_dates") or [row.get("date", "")])
-        details = [date_str, str(row.get("venue") or "Venue TBC"), str(row.get("grade") or "")]
-        for j, line in enumerate(details):
-            maxw = 420 if j == 1 else 490
-            font = fixture_text_fit(d, line, maxw, 27 if j == 0 else 22, 15, j==0)
-            fixture_center(d, 540, y+102+j*29, line, font, yellow if j==0 else white)
-    footer = "HAWTHORN BOROONDARA CRICKET CLUB"
-    fixture_center(d, w//2, 1250, footer, fixture_font(24,True), yellow)
+    d.line((55,45,112,45), fill=yellow,width=6)
+    d.line((55,45,55,100), fill=yellow,width=6)
+    d.line((w-112,45,w-55,45),fill=yellow,width=6)
+    d.line((w-55,45,w-55,100),fill=yellow,width=6)
+    title = str(settings.get("title","UPCOMING MATCHES"))
+    fixture_center(d,w//2,78,title,fixture_text_fit(d,title,w-115,int(settings.get("title_size",90)),42,True),yellow)
+    n=len(rows)
+    top=int(settings.get("cards_top",255));bottom=int(settings.get("cards_bottom",1175))
+    gap=24; card_h=max(185,(bottom-top-gap*(n-1))//max(1,n))
+    for i,row in enumerate(rows):
+        y=top+i*(card_h+gap)
+        home=row.get("home_name") or fixture_split_teams(row)[0]
+        away=row.get("away_name") or fixture_split_teams(row)[1]
+        hc=fixture_find_club(home); ac=fixture_find_club(away)
+        d.rounded_rectangle((68,y,1012,y+card_h),radius=24,fill="#0c1b37",outline=yellow,width=3)
+        # Crop logos within their own side zones; leave the central details clear.
+        size=int(card_h*float(settings.get("logo_scale",1.65)))
+        bleed=int(settings.get("logo_bleed",55))
+        left_zone=(71,y+4,305,y+card_h-4)
+        right_zone=(775,y+4,1009,y+card_h-4)
+        fixture_logo_paste(background,hc,(71+size/2-bleed,y+card_h/2),size,left_zone)
+        fixture_logo_paste(background,ac,(1009-size/2+bleed,y+card_h/2),size,right_zone)
+        d=ImageDraw.Draw(background)
+        # Semi-opaque centre provides guaranteed legibility, even with vivid club art.
+        d.rectangle((305,y+5,775,y+card_h-5),fill="#0c1b37")
+        # Club names at the bottom of each side, abbreviated in the centre.
+        hname=str(hc.get("name") if hc else home)
+        aname=str(ac.get("name") if ac else away)
+        label_font=fixture_font(17,True)
+        d.rectangle((73,y+card_h-35,304,y+card_h-5),fill="#09152c")
+        d.rectangle((776,y+card_h-35,1007,y+card_h-5),fill="#09152c")
+        fixture_center(d,188,y+card_h-30,hname,fixture_text_fit(d,hname,222,17,11,True),"#ffffff")
+        fixture_center(d,892,y+card_h-30,aname,fixture_text_fit(d,aname,222,17,11,True),"#ffffff")
+        hab=fixture_abbrev(home,hc); aab=fixture_abbrev(away,ac)
+        fixture_center(d,405,y+28,hab,fixture_text_fit(d,hab,145,47,25,True),"#ffffff")
+        fixture_center(d,675,y+28,aab,fixture_text_fit(d,aab,145,47,25,True),"#ffffff")
+        fixture_center(d,540,y+34,"VS",fixture_font(27,True),yellow)
+        date_str=" & ".join(row.get("playing_dates") or [row.get("date","")])
+        # Responsive vertical spacing: all details must remain inside the card.
+        details=[date_str,str(row.get("venue") or "Venue TBC"),str(row.get("grade") or "")]
+        base=y+min(108,max(82,card_h*0.42))
+        step=min(33,max(25,(card_h-140)//3))
+        for j,line in enumerate(details):
+            font=fixture_text_fit(d,line,448,25 if j==0 else 21,14,j==0)
+            fixture_center(d,540,base+j*step,line,font,yellow if j==0 else "#ffffff")
+    fixture_center(d,w//2,1250,"HAWTHORN BOROONDARA CRICKET CLUB",fixture_font(24,True),yellow)
     return background
 
 
@@ -1676,8 +1672,8 @@ def fixture_admin():
     cfg["cards_top"] = st.slider("First match position", 195, 380, int(cfg["cards_top"]))
     cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg["cards_bottom"]))
     cfg["yellow"] = st.color_picker("Accent colour", cfg["yellow"])
-    cfg["logo_scale"] = st.slider("Club visual size", 1.0, 3.2, float(cfg.get("logo_scale", 2.35)), 0.05)
-    cfg["logo_bleed"] = st.slider("Logo side cropping", 0, 240, int(cfg.get("logo_bleed", 115)))
+    cfg["logo_scale"] = st.slider("Club visual size", 1.0, 3.2, float(cfg.get("logo_scale", 1.65)), 0.05)
+    cfg["logo_bleed"] = st.slider("Logo side cropping", 0, 240, int(cfg.get("logo_bleed", 55)))
     cfg["background"] = st.selectbox("Background", ["Red to navy gradient", "HBCC existing template"], index=["Red to navy gradient", "HBCC existing template"].index(cfg["background"]))
     st.download_button("Download template settings JSON", json.dumps(cfg, indent=2), "fixture_template_settings.json", "application/json")
     st.divider()
@@ -1723,7 +1719,7 @@ def fixture_admin():
 def fixture_publisher(chosen):
     st.caption(f"{len(chosen)} matches selected · Instagram portrait 1080 × 1350 · up to 3 fixtures per graphic")
     if "fixture_graphic_settings" not in st.session_state:
-        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":2.35, "logo_bleed":115}
+        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.65, "logo_bleed":55}
     fixture_library()
     if "fixture_view" not in st.session_state:
         st.session_state.fixture_view = "graphics"
@@ -1736,29 +1732,52 @@ def fixture_publisher(chosen):
         fixture_admin(); return
     st.markdown("#### Upcoming fixture graphic generator")
     st.caption("Fixture details come from PlayCricket. You can correct any field before generating. Club logos are matched from your visual directory.")
+    # Resolve home/away using the match detail endpoint, not the title order.
+    # Cache by match ID to avoid repeat requests on every Streamlit rerun.
+    cache = st.session_state.setdefault("fixture_home_away_cache", {})
+    resolved = []
+    for original in chosen:
+        row = dict(original)
+        mid = row.get("id")
+        if mid and (not row.get("home_name") or not row.get("away_name")):
+            if mid not in cache:
+                try:
+                    cache[mid] = fixture_home_away({}, match_detail(mid))
+                except Exception:
+                    cache[mid] = (None, None)
+            hn, an = cache[mid]
+            if hn and an:
+                row["home_name"], row["away_name"] = hn, an
+        resolved.append(row)
+    chosen = resolved
     edited = []
     with st.expander("Edit fixture details or team names", expanded=False):
         for i,row in enumerate(chosen):
-            home,away = fixture_split_teams(row)
+            home = row.get("home_name") or fixture_split_teams(row)[0]
+            away = row.get("away_name") or fixture_split_teams(row)[1]
             st.markdown(f"**{row.get('grade','Match')} — {home} vs {away}**")
             c1,c2=st.columns(2)
             home=c1.text_input("Home team",home,key=f"fix_home_{row['id']}")
             away=c2.text_input("Away team",away,key=f"fix_away_{row['id']}")
+            st.checkbox("Swap home and away", key=f"fix_swap_{row['id']}", help="Use if PlayCricket displays the teams in the wrong home/away order.")
             c3,c4=st.columns(2)
             venue=c3.text_input("Venue",row.get("venue") or "Venue TBC",key=f"fix_venue_{row['id']}")
             date_value=c4.text_input("Dates (separate with &)"," & ".join(row.get("playing_dates") or [row.get("date", "")]),key=f"fix_date_{row['id']}")
-            edited.append({**row,"name":f"{home} vs {away}","venue":venue,"playing_dates":[x.strip() for x in date_value.split("&") if x.strip()]})
+            edited.append({**row,"home_name":home,"away_name":away,"name":f"{home} vs {away}","venue":venue,"playing_dates":[x.strip() for x in date_value.split("&") if x.strip()]})
     if not edited:
         edited = chosen
     # Keep edits from widgets after expander closes.
     rows=[]
     for row in chosen:
         mid=row['id']
-        home,away=fixture_split_teams(row)
+        home=row.get("home_name") or fixture_split_teams(row)[0]
+        away=row.get("away_name") or fixture_split_teams(row)[1]
         home=st.session_state.get(f"fix_home_{mid}",home)
         away=st.session_state.get(f"fix_away_{mid}",away)
+        if st.session_state.get(f"fix_swap_{mid}",False):
+            home,away=away,home
         dates=st.session_state.get(f"fix_date_{mid}"," & ".join(row.get("playing_dates") or [row.get("date", "")]))
-        rows.append({**row,"name":f"{home} vs {away}","venue":st.session_state.get(f"fix_venue_{mid}",row.get("venue") or "Venue TBC"),"playing_dates":[x.strip() for x in dates.split("&") if x.strip()]})
+        rows.append({**row,"home_name":home,"away_name":away,"name":f"{home} vs {away}","venue":st.session_state.get(f"fix_venue_{mid}",row.get("venue") or "Venue TBC"),"playing_dates":[x.strip() for x in dates.split("&") if x.strip()]})
     missing=sorted({name for row in rows for name in fixture_split_teams(row) if not fixture_find_club(name)})
     if missing:
         st.warning(f"No matching logo for {len(missing)} team name(s): {', '.join(missing[:7])}{'…' if len(missing)>7 else ''}. Text abbreviations will be shown until you add visuals in Template Manager.")
