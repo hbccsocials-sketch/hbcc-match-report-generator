@@ -2547,7 +2547,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3128,18 +3128,16 @@ def results_template_admin():
 
 
 def results_render(row):
-    """One Instagram portrait per result; existing fixture artwork and club visuals."""
+    """Single continuous results card, with full-height cropped logo panels."""
     w, h = FIXTURE_SIZE
-    img = Image.new("RGB", (w, h), "#101b33")
+    cfg = {**RESULTS_DEFAULT_SETTINGS, **st.session_state.get("results_graphic_settings", {})}
+    gold = cfg["gold"]
+    img = Image.new("RGB", (w, h), "#0d1b35")
     d = ImageDraw.Draw(img)
     for yy in range(h):
         t = yy / h
-        a, b = (165, 12, 35), (14, 25, 47)
+        a, b = (155, 9, 33), (14, 24, 47)
         d.line((0, yy, w, yy), fill=tuple(int(a[k]*(1-t)+b[k]*t) for k in range(3)))
-    # The fixture background may contain 'UPCOMING MATCHES', so only reuse
-    # its texture when no baked-in fixture heading is present.
-    cfg = {**RESULTS_DEFAULT_SETTINGS, **st.session_state.get("results_graphic_settings", {})}
-    gold = cfg["gold"]
     custom_bg = st.session_state.get("results_background_bytes")
     if custom_bg:
         try:
@@ -3148,49 +3146,43 @@ def results_render(row):
             pass
     d = ImageDraw.Draw(img)
     if not custom_bg:
-        results_text(d, w//2, 65, "MATCH RESULTS", 940, 95, gold)
-    results_text(d, w//2, 180, str(row.get("grade", "")).upper(), 850, 32, "#ffffff")
-    d.rounded_rectangle((45, 255, 1035, 720), radius=26, fill="#0c1b37", outline=gold, width=5)
-    left, right = 185, 895
-    for name, x, zone in ((row.get('home_name') or 'TEAM 1', left, (52, 295, 305, 540)),
-                          (row.get('away_name') or 'TEAM 2', right, (775, 295, 1028, 540))):
-        club, _ = fixture_resolve_club(name)
-        fixture_logo_paste(img, club, (x, 417), size=int(140 * float(cfg["logo_scale"])), clip_box=zone)
-    d = ImageDraw.Draw(img)
+        results_text(d, 540, 48, "MATCH RESULTS", 940, 87, gold)
+    results_text(d, 540, 166, str(row.get('grade') or '').upper(), 900, 32, '#ffffff')
+    # One single uninterrupted results panel, not separate score/performer cards.
+    x0, y0, x1, y1 = 42, 233, 1038, 1240
+    d.rounded_rectangle((x0,y0,x1,y1), radius=24, fill='#0c1b37', outline=gold, width=5)
+    # Logo artwork fills the full-height side strips. Excess horizontal width is cropped.
     home_club, _ = fixture_resolve_club(row.get('home_name') or '')
     away_club, _ = fixture_resolve_club(row.get('away_name') or '')
-    outcome_y = int(cfg["outcome_top"])
-    score_y = int(cfg["score_top"])
-    performers_y = int(cfg["performers_top"])
-    # Outcome banner makes results visually distinct from upcoming fixture cards.
-    d.rounded_rectangle((330, outcome_y-9, 750, outcome_y+53), radius=13, fill="#263956")
-    results_text(d, 540, outcome_y, row.get('outcome') or 'RESULT', 402, 32, gold)
-    home_label = str((home_club or {}).get('name') or row.get('home_name') or 'TEAM 1').strip()
-    away_label = str((away_club or {}).get('name') or row.get('away_name') or 'TEAM 2').strip()
-    name_font, name_lines = fixture_equal_team_names(
-        d, home_label, away_label, 196, max_size=27, min_size=12
-    )
-    name_line_height = name_font.size + 6
-    for x, lines in zip((420, 660), name_lines):
-        first_y = 390 + (2 * name_line_height - len(lines) * name_line_height) / 2
-        for line_no, line in enumerate(lines):
-            fixture_center(d, x, first_y + line_no * name_line_height,
-                           line, name_font, '#ffffff')
-    results_text(d, 540, 404, 'VS', 52, 20, gold)
-    results_text(d, 420, score_y, row.get('home_score') or '—', 190, 44, gold)
-    results_text(d, 660, score_y, row.get('away_score') or '—', 190, 44, gold)
-    results_text(d, 540, 633, row.get('date_label', ''), 780, 29, gold)
-    results_text(d, 540, 675, row.get('venue', ''), 820, 24, '#ffffff', False)
-    # Equal-sized batting/bowling highlight sections.
-    d.rounded_rectangle((45, performers_y, 1035, performers_y+455), radius=22, fill="#142744", outline=gold, width=4)
-    d.line((540, performers_y+25, 540, performers_y+429), fill="#334562", width=3)
-    for kind, x in (("bat", 292), ("ball", 788)):
-        for i in range(2):
-            name = row.get(f'{kind}{i+1}_name') or '—'
-            figures = row.get(f'{kind}{i+1}_figures') or ''
-            results_text(d, x, performers_y+70 + i*150, name, 420, 32)
-            results_text(d, x, performers_y+119 + i*150, figures, 420, 30, gold)
-    results_text(d, 540, 1265, "HAWTHORN BOROONDARA CRICKET CLUB", 960, 28, gold)
+    fixture_logo_paste(img, home_club, (154, 500), clip_box=(48, 290, 265, 730))
+    fixture_logo_paste(img, away_club, (926, 500), clip_box=(815, 290, 1032, 730))
+    d = ImageDraw.Draw(img)
+    outcome = str(row.get('outcome') or '').strip()
+    if outcome:
+        d.rounded_rectangle((280,270,800,334),radius=13,fill='#263956')
+        results_text(d,540,282,outcome,498,27,gold)
+    hname = str((home_club or {}).get('name') or row.get('home_name') or 'TEAM 1')
+    aname = str((away_club or {}).get('name') or row.get('away_name') or 'TEAM 2')
+    name_font, name_lines = fixture_equal_team_names(d,hname,aname,210,max_size=31,min_size=15)
+    line_height = name_font.size + 8
+    for x,lines in zip((385,695),name_lines):
+        start = 394 + (2-len(lines))*line_height/2
+        for i,line in enumerate(lines):
+            fixture_center(d,x,start+i*line_height,line,name_font,'#ffffff')
+    results_text(d,540,412,'VS',48,21,gold)
+    results_text(d,385,520,row.get('home_score') or '—',218,52,gold)
+    results_text(d,695,520,row.get('away_score') or '—',218,52,gold)
+    results_text(d,540,637,row.get('date_label') or '',560,28,gold)
+    results_text(d,540,685,row.get('venue') or '',555,24,'#ffffff',False)
+    # Integrated player highlights with no secondary card outline.
+    d.line((105,785,975,785),fill='#40516d',width=2)
+    for kind,x in (('bat',295),('ball',785)):
+        for i in (1,2):
+            pname = row.get(f'{kind}{i}_name') or '—'
+            figures = row.get(f'{kind}{i}_figures') or ''
+            top = 830+i*168
+            results_text(d,x,top,pname,400,34,'#ffffff')
+            results_text(d,x,top+54,figures,400,32,gold)
     return img
 
 
@@ -3205,7 +3197,11 @@ def results_score(innings):
 
 
 def results_scorecard_defaults(fixture):
-    """Read match details defensively; never substitute venue for team names."""
+    """Extract team totals and HBCC-only performers from scorecard innings.
+
+    In a cricket innings, the BOWLING list belongs to the *other* team.
+    Never assume that the bowling list belongs to the batting team.
+    """
     data = {'home_name': fixture.get('home_name') or '',
             'away_name': fixture.get('away_name') or '',
             'grade': fixture.get('grade', ''),
@@ -3216,105 +3212,192 @@ def results_scorecard_defaults(fixture):
     try:
         detail = match_detail(fixture['id'])
         summary = detail.get('matchSummary') or {}
-        if not isinstance(summary, dict):
-            summary = {}
+        if not isinstance(summary,dict): summary={}
         data['outcome'] = str(summary.get('resultText') or detail.get('resultText') or '')
-        home, away = fixture_home_away(fixture, detail)
-        if home and fixture_key(home) != fixture_key(data['venue']) and 'venue tbc' not in home.lower(): data['home_name'] = home
-        if away and fixture_key(away) != fixture_key(data['venue']) and 'venue tbc' not in away.lower(): data['away_name'] = away
-        # Fixture names are only used if they actually contain two identifiable teams.
-        if 'venue tbc' in data['home_name'].lower(): data['home_name'] = ''
-        if 'venue tbc' in data['away_name'].lower(): data['away_name'] = ''
-        if not data['home_name'] or not data['away_name']:
-            for obj in (summary, detail):
-                found = teams_of(obj)
-                if len(found) >= 2:
-                    names = [name_of(t) for t in found[:2]]
-                    if all(names):
-                        data['home_name'] = data['home_name'] or names[0]
-                        data['away_name'] = data['away_name'] or names[1]
-                        break
+        home,away = fixture_home_away(fixture,detail)
+        if home and 'venue tbc' not in home.lower(): data['home_name']=home
+        if away and 'venue tbc' not in away.lower(): data['away_name']=away
+        for side in ('home','away'):
+            if 'venue tbc' in data[side+'_name'].lower(): data[side+'_name']=''
         def walk(obj, depth=0):
-            if depth > 13: return
-            if isinstance(obj, dict):
+            if depth>15:return
+            if isinstance(obj,dict):
                 yield obj
-                for value in obj.values():
-                    yield from walk(value, depth+1)
-            elif isinstance(obj, list):
-                for value in obj:
-                    yield from walk(value, depth+1)
-        def score(obj):
-            if not isinstance(obj, dict): return ''
-            for nested in ('total', 'score', 'inningsScore', 'scoreSummary'):
-                sub = obj.get(nested)
-                if isinstance(sub, dict):
-                    value = score(sub)
-                    if value: return value
-                elif isinstance(sub, str) and any(ch.isdigit() for ch in sub):
-                    return sub
-            runs = next((obj[k] for k in ('runsScored','totalRuns','runs','scoreRuns') if obj.get(k) is not None), None)
-            wickets = next((obj[k] for k in ('numberOfWicketsFallen','wicketsLost','wickets','totalWickets') if obj.get(k) is not None), None)
-            if runs is None or not str(runs).strip().lstrip('-').isdigit(): return ''
-            return str(runs) + ('/' + str(wickets) if wickets is not None else '')
-        # First use team-labelled score objects; don't assume innings order means home/away.
+                for val in obj.values(): yield from walk(val,depth+1)
+            elif isinstance(obj,list):
+                for val in obj:yield from walk(val,depth+1)
+        def total(obj):
+            if not isinstance(obj,dict):return ''
+            for key in ('inningsScore','scoreSummary','total','score'):
+                sub=obj.get(key)
+                if isinstance(sub,dict):
+                    val=total(sub)
+                    if val:return val
+                if isinstance(sub,str) and any(c.isdigit() for c in sub):return sub
+            runs=next((obj[k] for k in ('runsScored','totalRuns','runs','scoreRuns') if obj.get(k) is not None),None)
+            wickets=next((obj[k] for k in ('numberOfWicketsFallen','wicketsLost','wickets','totalWickets') if obj.get(k) is not None),None)
+            if runs is None or not str(runs).isdigit():return ''
+            return str(runs)+('/'+str(wickets) if wickets is not None else '')
+        def norm(s):return re.sub(r'[^a-z0-9]','',str(s or '').lower())
+        def is_hbcc(name):
+            n=norm(name)
+            return 'hawthornboroondara' in n or n=='hbcc'
+        def team_info(obj):
+            if not isinstance(obj,dict):return ('','')
+            for key in ('battingTeam','team','teamSummary','battingTeamSummary'):
+                if isinstance(obj.get(key),dict):
+                    t=obj[key]
+                    return name_of(t),str(t.get('id') or t.get('teamId') or '')
+            return (name_of(obj.get('teamName') or obj.get('battingTeamName')),
+                    str(obj.get('teamId') or obj.get('battingTeamId') or ''))
+        # Team identities and IDs from the actual match (not from the venue).
+        teams=[]
+        for source in (summary,detail):
+            for t in teams_of(source):
+                n=name_of(t)
+                if n and all(norm(n)!=norm(x[0]) for x in teams):
+                    teams.append((n,str(t.get('id') or t.get('teamId') or '')))
+        if len(teams)>=2:
+            if not data['home_name']:data['home_name']=teams[0][0]
+            if not data['away_name']:data['away_name']=teams[1][0]
+        hbcc_ids={tid for n,tid in teams if is_hbcc(n) and tid}
+        expected_id=str(fixture.get('team_id') or '')
+        if expected_id:hbcc_ids.add(expected_id)
+        # Capture team totals from labelled team summaries.
         for obj in walk(detail):
-            if not isinstance(obj, dict): continue
-            team_name = name_of(obj.get('teamName') or obj.get('displayName') or obj.get('team') or obj.get('name'))
-            if not team_name: continue
+            if not isinstance(obj,dict):continue
+            n,tid=team_info(obj)
+            if not n: n=name_of(obj.get('displayName') or obj.get('name'))
+            if not n:continue
+            val=total(obj)
+            if not val:continue
             for side in ('home','away'):
-                target = data[side+'_name']
-                if target and fixture_key(team_name) == fixture_key(target):
-                    value = score(obj)
-                    if value and not data[side+'_score']:
-                        data[side+'_score'] = value
-        # If the summary has home/away team objects with score, use them directly.
-        for container in (summary, detail):
+                if norm(n)==norm(data[side+'_name']) and not data[side+'_score']:
+                    data[side+'_score']=val
+        for container in (summary,detail):
             for side in ('home','away'):
-                for key in (side+'Team', side+'TeamSummary'):
-                    if isinstance(container.get(key), dict):
-                        value = score(container[key])
-                        if value and not data[side+'_score']: data[side+'_score'] = value
-        # Locate HBCC player records anywhere in the returned scorecard. Keep
-        # bowling/batting records from identifiable scorecard lists only.
-        hbcc_id = str(fixture.get('team_id') or '')
-        bats, balls = [], []
+                for key in (side+'Team',side+'TeamSummary'):
+                    if isinstance(container.get(key),dict) and not data[side+'_score']:
+                        data[side+'_score']=total(container[key])
+        # Collect innings where batting side can be identified. The bowling
+        # figures on that innings are recorded for the OPPOSITION, not the batter's team.
+        bats=[];balls=[]; innings_seen=set()
         for obj in walk(detail):
-            if not isinstance(obj, dict): continue
-            team_name = name_of(obj.get('teamName') or obj.get('team') or obj.get('name'))
-            is_hbcc = ('hawthorn boroondara' in team_name.lower() or team_name.lower() == 'hbcc'
-                       or str(obj.get('teamId') or '') == hbcc_id and bool(hbcc_id))
-            if not is_hbcc: continue
-            for entry in walk(obj):
-                if not isinstance(entry, dict): continue
-                for p in entry.get('batting', []) if isinstance(entry.get('batting'), list) else []:
-                    if not isinstance(p, dict): continue
-                    pname = name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
-                    try: runs = int(p.get('runsScored'))
-                    except (ValueError, TypeError): continue
-                    if pname: bats.append((runs, pname, f"{runs} ({p.get('ballsFaced') or '—'})"))
-                for p in entry.get('bowling', []) if isinstance(entry.get('bowling'), list) else []:
-                    if not isinstance(p, dict): continue
-                    pname = name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
-                    try: wkts = int(p.get('wicketsTaken'))
-                    except (ValueError, TypeError): continue
-                    if pname: balls.append((wkts, pname, f"{wkts}/{p.get('runsConceded') or '0'}"))
-        for kind, entries in (('bat', bats), ('ball', balls)):
-            seen = set()
-            for _, pname, figures in sorted(entries, reverse=True):
-                if pname.lower() in seen: continue
-                seen.add(pname.lower())
-                idx = len(seen)
-                if idx > 2: break
-                data[f'{kind}{idx}_name'] = pname
-                data[f'{kind}{idx}_figures'] = figures
-        data['_scorecard_loaded'] = True
+            if not isinstance(obj,dict):continue
+            batting=obj.get('batting')
+            bowling=obj.get('bowling')
+            if not isinstance(batting,list) or not isinstance(bowling,list):continue
+            marker=id(obj)
+            if marker in innings_seen:continue
+            innings_seen.add(marker)
+            n,tid=team_info(obj)
+            batting_hbcc = is_hbcc(n) or (bool(tid) and tid in hbcc_ids)
+            # If the batting side cannot be established, avoid assigning
+            # opposition bowling figures to HBCC.
+            batting_known = bool(n or tid)
+            innings_total=total(obj)
+            if innings_total and batting_known:
+                for side in ('home','away'):
+                    target=data[side+'_name']
+                    if norm(n)==norm(target) or (tid and any(norm(target)==norm(tn) and tid==t_id for tn,t_id in teams)):
+                        if not data[side+'_score']:data[side+'_score']=innings_total
+            if batting_hbcc:
+                for p in batting:
+                    if not isinstance(p,dict):continue
+                    pname=name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
+                    try:runs=int(p.get('runsScored'))
+                    except (TypeError,ValueError):continue
+                    if pname:bats.append((runs,pname,f"{runs} ({p.get('ballsFaced') if p.get('ballsFaced') is not None else '—'})"))
+            elif batting_known:
+                for p in bowling:
+                    if not isinstance(p,dict):continue
+                    pname=name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
+                    try:wickets=int(p.get('wicketsTaken'))
+                    except (TypeError,ValueError):continue
+                    if pname:
+                        conceded=p.get('runsConceded')
+                        balls.append((wickets,-int(conceded or 0),pname,f"{wickets}/{conceded if conceded is not None else '—'}"))
+        for kind,entries in (('bat',sorted(bats,reverse=True)),('ball',sorted(balls,reverse=True))):
+            seen=set();idx=0
+            for entry in entries:
+                pname=entry[-2];figures=entry[-1]
+                if pname.casefold() in seen:continue
+                seen.add(pname.casefold());idx+=1
+                if idx>2:break
+                data[f'{kind}{idx}_name']=pname
+                data[f'{kind}{idx}_figures']=figures
+        data['_scorecard_loaded']=True
     except Exception as error:
-        data['_load_error'] = str(error)
+        data['_load_error']=str(error)
     return data
 
 
+def results_render_pair(rows):
+    """Render up to two complete match results on one Instagram portrait."""
+    w, h = FIXTURE_SIZE
+    cfg = {**RESULTS_DEFAULT_SETTINGS, **st.session_state.get("results_graphic_settings", {})}
+    gold = cfg["gold"]
+    img = Image.new("RGB", (w, h), "#0d1b35")
+    d = ImageDraw.Draw(img)
+    for yy in range(h):
+        t = yy / h
+        a, b = (155, 9, 33), (14, 24, 47)
+        d.line((0, yy, w, yy), fill=tuple(int(a[k]*(1-t)+b[k]*t) for k in range(3)))
+    custom_bg = st.session_state.get("results_background_bytes")
+    if custom_bg:
+        try:
+            img = Image.open(io.BytesIO(custom_bg)).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+        except Exception:
+            pass
+    d = ImageDraw.Draw(img)
+    if not custom_bg:
+        results_text(d, 540, 36, "MATCH RESULTS", 960, 79, gold)
+    for idx, row in enumerate(rows[:2]):
+        top = 155 + idx * 575
+        bottom = top + 548
+        d.rounded_rectangle((35, top, 1045, bottom), radius=22,
+                            fill="#0c1b37", outline=gold, width=4)
+        grade = str(row.get("grade") or "").upper()
+        results_text(d, 540, top + 14, grade, 900, 29, gold)
+        outcome = str(row.get("outcome") or "").strip()
+        if outcome:
+            results_text(d, 540, top + 57, outcome, 790, 24, "#ffffff")
+        home_club, _ = fixture_resolve_club(row.get("home_name") or "")
+        away_club, _ = fixture_resolve_club(row.get("away_name") or "")
+        # Full-height cover crop inside each side logo panel.
+        fixture_logo_paste(img, home_club, (141, top + 229),
+                           clip_box=(43, top + 124, 237, top + 333))
+        fixture_logo_paste(img, away_club, (939, top + 229),
+                           clip_box=(843, top + 124, 1037, top + 333))
+        d = ImageDraw.Draw(img)
+        hname = str((home_club or {}).get("name") or row.get("home_name") or "TEAM 1")
+        aname = str((away_club or {}).get("name") or row.get("away_name") or "TEAM 2")
+        font, lines_by_team = fixture_equal_team_names(d, hname, aname, 245,
+                                                        max_size=28, min_size=14)
+        line_h = font.size + 6
+        for x, lines in zip((385, 695), lines_by_team):
+            start = top + 150 + (2-len(lines))*line_h/2
+            for j, line in enumerate(lines):
+                fixture_center(d, x, start+j*line_h, line, font, "#ffffff")
+        results_text(d, 540, top + 175, "VS", 44, 20, gold)
+        results_text(d, 385, top + 236, row.get("home_score") or "—", 235, 46, gold)
+        results_text(d, 695, top + 236, row.get("away_score") or "—", 235, 46, gold)
+        results_text(d, 540, top + 298, row.get("date_label") or "", 540, 23, gold)
+        results_text(d, 540, top + 329, row.get("venue") or "", 555, 21, "#ffffff", False)
+        d.line((95, top + 368, 985, top + 368), fill="#40516d", width=2)
+        # Two HBCC batters and two HBCC bowlers, one performer per row.
+        for kind, x in (("bat", 290), ("ball", 790)):
+            for n in (1, 2):
+                y = top + 383 + (n-1)*75
+                pname = row.get(f"{kind}{n}_name") or "—"
+                figures = row.get(f"{kind}{n}_figures") or ""
+                results_text(d, x, y, pname, 420, 26, "#ffffff")
+                results_text(d, x, y + 31, figures, 420, 24, gold)
+    return img
+
+
 def results_publisher(chosen):
-    st.caption('Generate one 1080 × 1350 result graphic for every selected match.')
+    st.caption('Two match results per 1080 × 1350 graphic; an odd final match gets its own graphic.')
     if not chosen:
         st.info('Select at least one completed match in Review Fixtures.')
         return
@@ -3337,7 +3420,7 @@ def results_publisher(chosen):
         with st.spinner(f'Reading {len(missing)} PlayCricket scorecard(s)...'):
             for fixture in missing:
                 store[str(fixture['id'])] = results_scorecard_defaults(fixture)
-    st.markdown(f'**{len(chosen)} match result graphics**')
+    st.markdown(f'**{len(chosen)} matches · {(len(chosen)+1)//2} graphics**')
     st.caption('Each match has its own editable details and download. Missing scorecard fields stay blank rather than showing invented scores.')
     images = []
     for number, fixture in enumerate(chosen, 1):
@@ -3369,21 +3452,30 @@ def results_publisher(chosen):
                         for i in (1,2):
                             row[f'{kind}{i}_name'] = st.text_input(f'Player {i} · {title}', value=row[f'{kind}{i}_name'], key=f'res_{kind}{i}n_'+mid)
                             row[f'{kind}{i}_figures'] = st.text_input(f'Figures {i} · {title}', value=row[f'{kind}{i}_figures'], key=f'res_{kind}{i}f_'+mid)
-            img = results_render(row)
-            st.image(img, use_container_width=True)
-            st.download_button('Download this result (PNG)', graphic_png(img),
-                               'HBCC_Result_'+mid[:8]+'.png', 'image/png',
-                               key='result_download_'+mid, use_container_width=True)
-        images.append((mid, results_render(row)))
+            st.caption('This match will appear in the combined graphic preview below.')
+    # Build combined graphics only after all editors have updated their rows.
+    for offset in range(0, len(chosen), 2):
+        batch = chosen[offset:offset+2]
+        rows = [store[str(f["id"])] for f in batch]
+        graphic = results_render_pair(rows)
+        graphic_num = offset // 2 + 1
+        label = f"Graphic {graphic_num} · {len(batch)} match{'es' if len(batch)>1 else ''}"
+        st.markdown(f"**{label}**")
+        st.image(graphic, use_container_width=True)
+        filename = f"HBCC_Match_Results_{graphic_num:02d}.png"
+        st.download_button(f"Download graphic {graphic_num} (PNG)", graphic_png(graphic),
+                           filename, "image/png", key=f"results_pair_{graphic_num}",
+                           use_container_width=True)
+        images.append((filename, graphic))
     if images:
         import zipfile
         archive = io.BytesIO()
-        with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-            for mid,img in images:
-                zf.writestr('HBCC_Result_'+mid[:8]+'.png', graphic_png(img))
-        st.download_button(f'Download all {len(images)} results (ZIP)', archive.getvalue(),
-                           'HBCC_Match_Results.zip', 'application/zip', type='primary',
-                           use_container_width=True, key='results_download_all')
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for filename, graphic in images:
+                zf.writestr(filename, graphic_png(graphic))
+        st.download_button(f"Download all {len(images)} graphics (ZIP)", archive.getvalue(),
+                           "HBCC_Match_Results.zip", "application/zip", type="primary",
+                           use_container_width=True, key="results_download_all")
 
 # ============================================================
 # ADVANCED SETTINGS
