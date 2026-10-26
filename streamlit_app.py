@@ -1905,6 +1905,53 @@ def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
         return
 
 
+def fixture_pretty_dates(values):
+    """Compact, readable fixture dates for one- and two-day matches."""
+    from datetime import datetime, date
+    parsed = []
+    for value in values:
+        if not value:
+            continue
+        if isinstance(value, (date, datetime)):
+            day = value.date() if isinstance(value, datetime) else value
+        else:
+            raw = str(value).strip()
+            day = None
+            for candidate in (raw, raw[:10]):
+                for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%a %d %b %Y", "%A %d %B %Y"):
+                    try:
+                        day = datetime.strptime(candidate, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                if day:
+                    break
+            if day is None:
+                parsed.append(raw.upper())
+                continue
+        parsed.append(day.strftime("%a").upper() + " " + str(day.day) + " " + day.strftime("%b").upper())
+    return " & ".join(dict.fromkeys(parsed)) or "DATE TBC"
+
+
+def fixture_wrapped_lines(draw, text, max_width, font, max_lines=2):
+    """Wrap venue text without allowing it to leave the centre panel."""
+    words = str(text).split()
+    if not words:
+        return ["VENUE TBC"]
+    lines = []
+    current = ""
+    for word in words:
+        trial = (current + " " + word).strip()
+        if current and draw.textbbox((0, 0), trial, font=font)[2] > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = trial
+    if current:
+        lines.append(current)
+    return lines[:max_lines]
+
+
 def fixture_graphic(rows, settings):
     """NBA-inspired panels with bounded artwork and a dedicated text column."""
     w, h = FIXTURE_SIZE
@@ -1956,23 +2003,56 @@ def fixture_graphic(rows, settings):
         d=ImageDraw.Draw(background)
         # Semi-opaque centre provides guaranteed legibility, even with vivid club art.
         d.rectangle((305,y+5,775,y+card_h-5),fill="#0c1b37")
-        # Club names sit directly beneath their abbreviations in the central
-        # text area. Never overlay club names on top of the logo artwork.
-        hname=str(hc.get("name") if hc else home)
-        aname=str(ac.get("name") if ac else away)
-        hab=fixture_abbrev(home,hc); aab=fixture_abbrev(away,ac)
-        fixture_center(d,405,y+20,hab,fixture_text_fit(d,hab,155,57,28,True),"#ffffff")
-        fixture_center(d,675,y+20,aab,fixture_text_fit(d,aab,155,57,28,True),"#ffffff")
-        fixture_center(d,540,y+34,"VS",fixture_font(27,True),yellow)
-        fixture_center(d,405,y+83,hname,fixture_text_fit(d,hname,205,17,10,False),"#ffffff")
-        fixture_center(d,675,y+83,aname,fixture_text_fit(d,aname,205,17,10,False),"#ffffff")
-        date_str=" & ".join(row.get("playing_dates") or [row.get("date","")])
-        details=[date_str,str(row.get("venue") or "Venue TBC"),str(row.get("grade") or "")]
-        base=y+min(140,max(116,card_h*0.48))
-        step=min(33,max(25,(card_h-160)//3))
-        for j,line in enumerate(details):
-            font=fixture_text_fit(d,line,448,25 if j==0 else 21,14,j==0)
-            fixture_center(d,540,base+j*step,line,font,yellow if j==0 else "#ffffff")
+        # Redesigned ESPN-style centre information panel. All text stays within x=305..775.
+        centre_x = 540
+        panel_left, panel_right = 305, 775
+        panel_width = panel_right - panel_left
+        pad = 18
+        usable = panel_width - pad * 2
+        # Grade strip is intentionally subtle and consistent on all three cards.
+        strip_top = y + 9
+        strip_bottom = y + 46
+        d.rectangle((panel_left + 2, strip_top, panel_right - 2, strip_bottom), fill="#192b49")
+        grade = str(row.get("grade") or "MATCH").upper().strip()
+        grade_font = fixture_text_fit(d, grade, usable - 18, 21, 13, True)
+        fixture_center(d, centre_x, strip_top + 6, grade, grade_font, yellow)
+
+        hab = fixture_abbrev(home, hc)
+        aab = fixture_abbrev(away, ac)
+        # Independent bounded columns keep long abbreviations clear of VS and panel edges.
+        left_x, right_x = 421, 659
+        abbrev_max_width = 178
+        team_y = y + 58
+        home_font = fixture_text_fit(d, hab, abbrev_max_width, 48, 18, True)
+        away_font = fixture_text_fit(d, aab, abbrev_max_width, 48, 18, True)
+        # Use the same point size on both teams for visual balance.
+        shared_size = min(getattr(home_font, "size", 30), getattr(away_font, "size", 30))
+        team_font = fixture_font(shared_size, True)
+        fixture_center(d, left_x, team_y, hab, team_font, "#ffffff")
+        fixture_center(d, right_x, team_y, aab, team_font, "#ffffff")
+        fixture_center(d, centre_x, team_y + 12, "VS", fixture_font(21, True), yellow)
+
+        dates = row.get("playing_dates") or [row.get("date", "")]
+        date_str = fixture_pretty_dates(dates)
+        date_y = y + 120
+        date_font = fixture_text_fit(d, date_str, usable, 26, 15, True)
+        fixture_center(d, centre_x, date_y, date_str, date_font, yellow)
+
+        venue = str(row.get("venue") or "Venue TBC").strip()
+        venue_area_top = y + 161
+        venue_area_bottom = y + card_h - 13
+        available_h = max(24, venue_area_bottom - venue_area_top)
+        venue_font = fixture_font(20, False)
+        venue_lines = fixture_wrapped_lines(d, venue, usable, venue_font)
+        # Scale down until the full venue fits into two lines in the available area.
+        for size_pt in range(20, 11, -1):
+            venue_font = fixture_font(size_pt, False)
+            venue_lines = fixture_wrapped_lines(d, venue, usable, venue_font)
+            if len(venue_lines) <= 2 and all(d.textbbox((0, 0), line, font=venue_font)[2] <= usable for line in venue_lines) and len(venue_lines) * (size_pt + 5) <= available_h:
+                break
+        line_height = getattr(venue_font, "size", 16) + 5
+        for line_no, line in enumerate(venue_lines):
+            fixture_center(d, centre_x, venue_area_top + line_no * line_height, line, venue_font, "#ffffff")
         # Draw the outline last, above the artwork and label strips. This prevents
         # the square cropped visuals from covering the yellow left/right borders.
         d.rounded_rectangle((68,y,1012,y+card_h),radius=24,outline=yellow,width=4)
