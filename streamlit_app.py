@@ -1662,7 +1662,7 @@ def fixture_asset_export():
 
 def fixture_admin():
     st.markdown("#### Fixture Template Manager")
-    secret = str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
+    secret = str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
     if not secret:
         st.warning("Set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets to enable editing.")
         return
@@ -3165,7 +3165,7 @@ else:
             if st.session_state.team_publish_view == "template":
                 st.markdown("#### Template Manager")
                 st.caption("Admin access required to change the graphic template and typography.")
-                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "")
+                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947")
                 if not admin_password:
                     st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
                 else:
