@@ -1142,7 +1142,7 @@ def selection_output(rows):
         lines.extend([
             row["grade"].upper(),
             row["name"],
-            f"Date: {row['date']}",
+            f"Date: {graphic_date(row)}",
             f"Venue: {row['venue'] or 'Not available'}",
             ""
         ])
@@ -1185,7 +1185,7 @@ def card_copy_parts(row):
         match_line = fixture or "Opponent unavailable"
 
     playing_dates = row.get("playing_dates") or []
-    date_line = " & ".join(playing_dates) if playing_dates else str(row.get("date") or "Date unavailable")
+    date_line = graphic_date(row)
     venue_line = str(row.get("venue") or "Venue unavailable")
     details = "\n".join([grade, match_line, f"Date: {date_line}", f"Venue: {venue_line}"])
 
@@ -1267,8 +1267,9 @@ def graphic_opponent(row):
 
 
 def graphic_date(row):
+    """Use the same human-readable date style as Upcoming Fixtures graphics."""
     dates = row.get("playing_dates") or [row.get("date", "")]
-    return " & ".join(str(d) for d in dict.fromkeys(d for d in dates if d))
+    return fixture_pretty_dates(dates)
 
 
 def wrap_to_width(draw, text, font, max_width):
@@ -2542,7 +2543,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
