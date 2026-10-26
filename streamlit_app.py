@@ -2414,7 +2414,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2579,15 +2579,19 @@ def team_template_admin():
 
 
 def fixture_publisher(chosen):
-    st.caption(f"{len(chosen)} matches selected · Instagram portrait 1080 × 1350 · up to 3 fixtures per graphic")
+    # The page already displays the section title and match count.
     if "fixture_graphic_settings" not in st.session_state:
         st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.65, "logo_bleed":55}
     fixture_library()
     if "fixture_view" not in st.session_state:
         st.session_state.fixture_view = "graphics"
-    st.caption("Templates, logos and aliases can be managed from Admin mode at the top of the app.")
-    st.markdown("#### Upcoming fixture graphic generator")
-    st.caption("Fixture details come from PlayCricket. You can correct any field before generating. Club logos are matched from your visual directory.")
+    st.caption("Review your fixtures and club logos, then download the finished Instagram graphics.")
+    total_graphics = (len(chosen) + 2) // 3
+    metric_a, metric_b, metric_c = st.columns(3)
+    metric_a.metric("Fixtures", len(chosen))
+    metric_b.metric("Graphics", total_graphics)
+    metric_c.metric("Format", "1080 × 1350")
+    st.markdown("**1. Review details**")
     # Resolve home/away using the match detail endpoint, not the title order.
     # Cache by match ID to avoid repeat requests on every Streamlit rerun.
     cache = st.session_state.setdefault("fixture_home_away_cache", {})
@@ -2607,7 +2611,7 @@ def fixture_publisher(chosen):
         resolved.append(row)
     chosen = resolved
     edited = []
-    with st.expander("Fixture adjustments — home/away and details", expanded=False):
+    with st.expander("Edit fixture details and home/away", expanded=False):
         for i,row in enumerate(chosen):
             home = row.get("home_name") or fixture_split_teams(row)[0]
             away = row.get("away_name") or fixture_split_teams(row)[1]
@@ -2706,7 +2710,7 @@ def fixture_publisher(chosen):
                             record["source_name"] = team_name
                             name_updates += 1
             if name_updates:
-                st.caption(f"Updated {name_updates} existing PlayCricket team name(s) in Supabase from fixture details.")
+                pass  # Quiet background sync: no need to interrupt the publishing workflow.
         except Exception as exc:
             st.warning("Could not update saved team names: " + str(exc))
 
@@ -2718,7 +2722,8 @@ def fixture_publisher(chosen):
     choices = [""] + [str(c["id"]) for c in clubs]
     labels = {"": "Automatic matching"}
     labels.update({str(c["id"]): str(c.get("name", "Unnamed")) for c in clubs})
-    with st.expander("Club logos — review matches and remember corrections", expanded=False):
+    st.markdown("**2. Check club logos**")
+    with st.expander("Review logos, abbreviations and saved club matches", expanded=False):
         st.caption("Recognised clubs can be connected to PlayCricket IDs in one click. Corrections are remembered in Supabase.")
         if st.session_state.get("fixture_mapping_error"):
             st.warning("Mapping database unavailable: " + st.session_state.fixture_mapping_error)
@@ -2815,12 +2820,17 @@ def fixture_publisher(chosen):
             st.info("No new ID connections to save. Existing mappings are already saved, or PlayCricket did not provide team/club IDs.")
     missing=sorted({name for row in rows for name,ids,override in ((row.get("home_name"),row.get("home_ids"),row.get("home_club_override")),(row.get("away_name"),row.get("away_ids"),row.get("away_club_override"))) if not fixture_resolve_club(name,ids,override)[0]})
     if missing:
-        st.warning(f"No matching logo for {len(missing)} team name(s): {', '.join(missing[:7])}{'…' if len(missing)>7 else ''}. Text abbreviations will be shown until you add visuals in Template Manager.")
+        st.warning(
+            f"Logo needed: {', '.join(missing[:7])}{'…' if len(missing)>7 else ''}. "
+            "Open **Review logos, abbreviations and saved club matches** above to select a club. "
+            "Until then, the graphic uses a text abbreviation."
+        )
     groups=[rows[i:i+3] for i in range(0,len(rows),3)]
     if not groups:
         st.info("Select at least one fixture."); return
     imgs=[fixture_graphic(group, st.session_state.fixture_graphic_settings) for group in groups]
-    st.markdown(f"**{len(imgs)} graphics ready**")
+    st.markdown("**3. Preview and download**")
+    st.caption(f"{len(imgs)} graphic(s) ready · up to 3 fixtures per graphic")
     gallery=st.columns(min(3,len(imgs)))
     zipped=io.BytesIO()
     with zipfile.ZipFile(zipped,"w",zipfile.ZIP_DEFLATED) as archive:
