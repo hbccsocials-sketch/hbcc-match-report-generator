@@ -1590,14 +1590,24 @@ def fixture_graphic(rows, settings):
         t = yy / h
         a, b = (165, 12, 35), (14, 25, 47)
         d.line((0, yy, w, yy), fill=tuple(int(a[k]*(1-t)+b[k]*t) for k in range(3)))
-    if settings.get("background") == "HBCC existing template" and DEFAULT_TEMPLATE.exists():
+    custom_bg = st.session_state.get("fixture_background_bytes")
+    if custom_bg:
+        try:
+            background = Image.open(io.BytesIO(custom_bg)).convert("RGB").resize((w,h), Image.Resampling.LANCZOS)
+        except (OSError, ValueError):
+            pass
+    elif settings.get("background") == "HBCC existing template" and DEFAULT_TEMPLATE.exists():
         background = Image.open(DEFAULT_TEMPLATE).convert("RGB").resize((w,h), Image.Resampling.LANCZOS)
     d = ImageDraw.Draw(background)
     yellow = settings.get("yellow", "#f5b82e")
-    d.line((55,45,112,45), fill=yellow,width=6)
-    d.line((55,45,55,100), fill=yellow,width=6)
-    d.line((w-112,45,w-55,45),fill=yellow,width=6)
-    d.line((w-55,45,w-55,100),fill=yellow,width=6)
+    if not custom_bg:
+        d.line((55,45,112,45), fill=yellow,width=6)
+    if not custom_bg:
+        d.line((55,45,55,100), fill=yellow,width=6)
+    if not custom_bg:
+        d.line((w-112,45,w-55,45),fill=yellow,width=6)
+    if not custom_bg:
+        d.line((w-55,45,w-55,100),fill=yellow,width=6)
     title = str(settings.get("title","UPCOMING MATCHES"))
     fixture_center(d,w//2,78,title,fixture_text_fit(d,title,w-115,int(settings.get("title_size",90)),42,True),yellow)
     n=len(rows)
@@ -1645,7 +1655,8 @@ def fixture_graphic(rows, settings):
         # Draw the outline last, above the artwork and label strips. This prevents
         # the square cropped visuals from covering the yellow left/right borders.
         d.rounded_rectangle((68,y,1012,y+card_h),radius=24,outline=yellow,width=4)
-    fixture_center(d,w//2,1250,"HAWTHORN BOROONDARA CRICKET CLUB",fixture_font(24,True),yellow)
+    if not custom_bg:
+        fixture_center(d,w//2,1250,"HAWTHORN BOROONDARA CRICKET CLUB",fixture_font(24,True),yellow)
     return background
 
 
@@ -1661,65 +1672,156 @@ def fixture_asset_export():
 
 
 def fixture_admin():
-    st.markdown("#### Fixture Template Manager")
-    secret = str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
-    if not secret:
-        st.warning("Set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets to enable editing.")
-        return
-    password = st.text_input("Admin password", type="password", key="fixture_admin_password")
-    if not password or not hmac.compare_digest(password, secret):
-        if password:
-            st.error("Incorrect password")
-        return
-    st.success("Admin access granted")
-    cfg = st.session_state.fixture_graphic_settings
-    cfg["title"] = st.text_input("Graphic heading", cfg["title"])
-    cfg["title_size"] = st.slider("Heading size", 42, 115, int(cfg["title_size"]))
-    cfg["cards_top"] = st.slider("First match position", 195, 380, int(cfg["cards_top"]))
-    cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg["cards_bottom"]))
-    cfg["yellow"] = st.color_picker("Accent colour", cfg["yellow"])
-    cfg["logo_scale"] = st.slider("Club visual size", 1.0, 3.2, float(cfg.get("logo_scale", 1.65)), 0.05)
-    cfg["logo_bleed"] = st.slider("Logo side cropping", 0, 240, int(cfg.get("logo_bleed", 55)))
-    cfg["background"] = st.selectbox("Background", ["Red to navy gradient", "HBCC existing template"], index=["Red to navy gradient", "HBCC existing template"].index(cfg["background"]))
-    st.download_button("Download template settings JSON", json.dumps(cfg, indent=2), "fixture_template_settings.json", "application/json")
-    st.divider()
-    st.markdown("#### Club visual directory")
-    st.caption("Upload the actual PNG/JPG club visuals, not a screenshot of the Canva grid. Each club has a name, abbreviation, optional aliases and image.")
-    with st.form("fixture_add_club", clear_on_submit=True):
-        name = st.text_input("Club full name")
-        abbr = st.text_input("Club abbreviation (e.g. HBCC, DET)")
-        aliases = st.text_input("Alternative names, separated by commas")
-        upload = st.file_uploader("Club visual PNG/JPG", type=["png","jpg","jpeg","webp"])
-        save = st.form_submit_button("Add or update club", type="primary")
-        if save:
-            if not name.strip() or not upload:
-                st.error("Provide a club name and an image.")
-            else:
-                try:
-                    Image.open(io.BytesIO(upload.getvalue())).verify()
-                    filename = re.sub(r"[^a-z0-9]+", "_", name.casefold()).strip("_") + ".png"
-                    logo = Image.open(io.BytesIO(upload.getvalue())).convert("RGBA")
-                    output = io.BytesIO(); logo.save(output, format="PNG")
-                    st.session_state.fixture_uploaded_logos[filename] = output.getvalue()
-                    records = fixture_library()
-                    records[:] = [x for x in records if fixture_key(x.get("name")) != fixture_key(name)]
-                    records.append({"name":name.strip(), "abbr":abbr.strip(), "aliases":[a.strip() for a in aliases.split(",") if a.strip()], "file":filename})
-                    st.success(f"Saved {name} for this session. Download the ZIP to make it permanent.")
-                except (OSError, ValueError):
-                    st.error("This image could not be read.")
-    clubs = fixture_library()
-    st.caption(f"{len(clubs)} club visuals in the library")
+    """Global admin fixture editor; authorization is handled by admin_panel()."""
+    cfg = st.session_state.setdefault("fixture_graphic_settings", {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.65, "logo_bleed":55})
+    st.markdown("#### Fixture graphic template")
+    st.caption("Upload a blank 1080 × 1350 background. Content Studio automatically overlays the title, match panels, logos, names, dates and venues.")
+    uploaded = st.file_uploader("Blank fixture background (PNG/JPG)", type=["png", "jpg", "jpeg"], key="global_fixture_background")
+    if uploaded is not None and st.session_state.get("fixture_background_upload_hash") != (uploaded.name, len(uploaded.getvalue())):
+        try:
+            st.session_state.fixture_background_upload_hash=(uploaded.name,len(uploaded.getvalue()))
+            im = Image.open(io.BytesIO(uploaded.getvalue()))
+            im.verify()
+            st.session_state.fixture_background_bytes = uploaded.getvalue()
+        except (OSError, ValueError):
+            st.error("Invalid background image")
+    if st.session_state.get("fixture_background_bytes"):
+        st.image(st.session_state.fixture_background_bytes, width=220, caption="Current background (text and fixtures will be added automatically)")
+        st.download_button("Download current background", st.session_state.fixture_background_bytes, "fixture_background.png")
+        if st.button("Use built-in background instead", key="remove_fixture_background"):
+            st.session_state.pop("fixture_background_bytes", None)
+            st.rerun()
+    st.markdown("##### Saved background templates")
+    library=st.session_state.setdefault("fixture_background_templates", {})
+    if st.session_state.get("fixture_background_bytes") and not library:
+        library["Current background"]=st.session_state.fixture_background_bytes
+    template_name=st.text_input("Template name",value="Fixture template 1",key="fixture_template_name")
+    if st.button("Save current background as template",disabled=not bool(st.session_state.get("fixture_background_bytes"))):
+        library[template_name.strip() or "Untitled template"]=st.session_state.fixture_background_bytes
+        st.success("Template saved for this session")
+    if library:
+        chosen_template=st.selectbox("Choose a saved background",list(library),key="fixture_template_choice")
+        if st.button("Apply selected background"):
+            st.session_state.fixture_background_bytes=library[chosen_template]
+            st.rerun()
+        export=io.BytesIO()
+        with zipfile.ZipFile(export,"w",zipfile.ZIP_DEFLATED) as archive:
+            for name,data in library.items():
+                safe=re.sub(r"[^a-zA-Z0-9_-]+","_",name).strip("_") or "template"
+                archive.writestr(f"{safe}.png",data)
+        st.download_button("Export all backgrounds (ZIP)",export.getvalue(),"fixture_background_templates.zip","application/zip")
+    st.markdown("##### Text and layout")
+    c1,c2=st.columns(2)
+    cfg["title"] = c1.text_input("Heading", value=str(cfg.get("title", "UPCOMING MATCHES")), key="admin_fixture_title")
+    cfg["yellow"] = c2.color_picker("Accent colour", value=cfg.get("yellow", "#f5b82e"), key="admin_fixture_accent")
+    with st.expander("Advanced layout settings", expanded=False):
+        cfg["title_size"] = st.slider("Heading size", 42, 115, int(cfg.get("title_size",90)), key="admin_fixture_title_size")
+        cfg["cards_top"] = st.slider("First card position", 195, 380, int(cfg.get("cards_top",255)), key="admin_fixture_cards_top")
+        cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg.get("cards_bottom",1175)), key="admin_fixture_cards_bottom")
+        cfg["logo_scale"] = st.slider("Logo scale", 1.0, 3.2, float(cfg.get("logo_scale",1.65)), .05, key="admin_fixture_logo_scale")
+    st.download_button("Export fixture settings", json.dumps(cfg,indent=2), "fixture_template_settings.json", "application/json")
+    import_cfg=st.file_uploader("Import fixture settings JSON",type=["json"],key="import_fixture_settings")
+    if import_cfg and st.button("Apply fixture settings"):
+        try:
+            obj=json.loads(import_cfg.getvalue())
+            if not isinstance(obj,dict): raise ValueError("Expected JSON object")
+            cfg.update({k:v for k,v in obj.items() if k in cfg})
+            st.rerun()
+        except (ValueError, UnicodeDecodeError) as ex:
+            st.error(str(ex))
+    st.caption("Changes are active for this session. Export your background and settings to keep them after a Streamlit restart.")
+
+
+def fixture_club_admin():
+    st.markdown("#### Club visuals and aliases")
+    st.caption("Edit existing clubs without uploading images again, or add a new club with a visual.")
+    clubs=fixture_library()
     if clubs:
-        choice = st.selectbox("Manage a club", range(len(clubs)), format_func=lambda i:clubs[i].get("name", "Club"))
-        c = clubs[choice]
-        st.write(f"**{c.get('name')}** · {c.get('abbr','')} · aliases: {', '.join(c.get('aliases',[])) or 'none'}")
-        raw = fixture_logo_bytes(c)
-        if raw:
-            st.image(raw, width=140)
-        if st.button("Delete selected club visual"):
-            clubs.pop(choice); st.rerun()
-    st.download_button("Download club visual database (ZIP)", fixture_asset_export(), "club_visuals.zip", "application/zip", type="primary", use_container_width=True)
-    st.info("To preserve additions after a Streamlit restart, unzip this export into a 'club_visuals' folder beside streamlit_app.py in GitHub. This creates club_visuals/clubs.json and the image files. Session uploads alone are temporary.")
+        names=[f"{c.get('name','Unnamed')} · {c.get('abbr','')}" for c in clubs]
+        selected=st.selectbox("Select a club to edit", range(len(clubs)),format_func=lambda i:names[i],key="club_admin_selected")
+        club=clubs[selected]
+        with st.form("edit_existing_club"):
+            name=st.text_input("Full club name",value=club.get("name", ""))
+            abbr=st.text_input("Abbreviation",value=club.get("abbr", ""))
+            aliases=st.text_area("PlayCricket aliases (one per line)",value="\n".join(club.get("aliases", [])),height=110)
+            logo=st.file_uploader("Replace logo (optional)",type=["png","jpg","jpeg","webp"])
+            save=st.form_submit_button("Save club details",type="primary")
+            if save:
+                if not name.strip(): st.error("Club name is required")
+                else:
+                    club.update({"name":name.strip(),"abbr":abbr.strip(),"aliases":[a.strip() for a in aliases.splitlines() if a.strip()]})
+                    if logo:
+                        try:
+                            im=Image.open(io.BytesIO(logo.getvalue())).convert("RGBA")
+                            buf=io.BytesIO();im.save(buf,format="PNG")
+                            filename=re.sub(r"[^a-z0-9]+","_",name.casefold()).strip("_")+".png"
+                            st.session_state.fixture_uploaded_logos[filename]=buf.getvalue()
+                            club["file"]=filename
+                        except (OSError, ValueError): st.error("Invalid logo")
+                    st.success("Club details saved for this session")
+        raw=fixture_logo_bytes(club)
+        if raw: st.image(raw,width=140)
+        if st.button("Delete this club",key="delete_club_global"):
+            clubs.pop(selected);st.rerun()
+    with st.expander("Add a new club",expanded=False):
+        with st.form("add_new_fixture_club",clear_on_submit=True):
+            name=st.text_input("New club name")
+            abbr=st.text_input("New club abbreviation")
+            aliases=st.text_area("Aliases (one per line)")
+            logo=st.file_uploader("Club image",type=["png","jpg","jpeg","webp"])
+            if st.form_submit_button("Add club",type="primary"):
+                if not name.strip() or logo is None: st.error("Provide a club name and image")
+                else:
+                    try:
+                        im=Image.open(io.BytesIO(logo.getvalue())).convert("RGBA")
+                        buf=io.BytesIO();im.save(buf,format="PNG")
+                        filename=re.sub(r"[^a-z0-9]+","_",name.casefold()).strip("_")+".png"
+                        st.session_state.fixture_uploaded_logos[filename]=buf.getvalue()
+                        clubs.append({"name":name.strip(),"abbr":abbr.strip(),"aliases":[a.strip() for a in aliases.splitlines() if a.strip()],"file":filename})
+                        st.success("Club added for this session")
+                    except (OSError, ValueError): st.error("Invalid image")
+    st.download_button("Export complete club library (ZIP)",fixture_asset_export(),"club_visuals.zip","application/zip",type="primary",use_container_width=True)
+    st.caption("Important: Streamlit Cloud does not permanently save uploads. Commit the exported ZIP contents to the club_visuals folder in GitHub to preserve new images and aliases.")
+
+
+def global_admin_panel():
+    st.markdown("### Admin mode")
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
+    if not secret:
+        st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
+        return
+    if not st.session_state.get("global_admin_unlocked",False):
+        with st.form("global_admin_login"):
+            pwd=st.text_input("Admin password",type="password")
+            if st.form_submit_button("Log in",type="primary"):
+                if hmac.compare_digest(pwd,secret):
+                    st.session_state.global_admin_unlocked=True
+                    st.rerun()
+                else: st.error("Incorrect password")
+        return
+    c1,c2=st.columns([5,1])
+    c1.success("Admin mode active across Content Studio")
+    if c2.button("Log out"):
+        st.session_state.global_admin_unlocked=False
+        st.rerun()
+    tab_fixture,tab_team,tab_clubs=st.tabs(["Fixture templates","Team selection templates","Club visuals & aliases"])
+    with tab_fixture: fixture_admin()
+    with tab_team:
+        st.markdown("#### Team selection template")
+        st.caption("Upload a blank background; player names and match information are drawn over it automatically.")
+        up=st.file_uploader("Team selection background",type=["png","jpg","jpeg"],key="global_team_bg")
+        if up:
+            st.session_state.graphic_template_bytes=up.getvalue()
+        if st.session_state.get("graphic_template_bytes"):
+            st.image(st.session_state.graphic_template_bytes,width=220)
+            st.download_button("Download team background",st.session_state.graphic_template_bytes,"hbcc_team_template.png")
+        cfg=graphic_settings()
+        with st.expander("Text placement and typography",expanded=False):
+            for key,label in [("left","Left margin"),("top","Top margin"),("title_size","Grade size"),("details_size","Fixture details size"),("players_size","Player names size")]:
+                cfg[key]=st.number_input(label,10,250,int(cfg[key]),key="global_team_"+key)
+            cfg["line_spacing"]=st.number_input("Player line spacing",1.0,2.5,float(cfg["line_spacing"]),.05,key="global_team_spacing")
+        st.download_button("Export team template settings",json.dumps(cfg,indent=2),"hbcc_graphic_settings.json","application/json")
+    with tab_clubs: fixture_club_admin()
 
 
 def fixture_publisher(chosen):
@@ -1729,13 +1831,7 @@ def fixture_publisher(chosen):
     fixture_library()
     if "fixture_view" not in st.session_state:
         st.session_state.fixture_view = "graphics"
-    a,b = st.columns(2)
-    if a.button("Upcoming fixture graphics", use_container_width=True, type="primary" if st.session_state.fixture_view=="graphics" else "secondary"):
-        st.session_state.fixture_view="graphics"; st.rerun()
-    if b.button("Fixture Template Manager", use_container_width=True, type="primary" if st.session_state.fixture_view=="admin" else "secondary"):
-        st.session_state.fixture_view="admin"; st.rerun()
-    if st.session_state.fixture_view == "admin":
-        fixture_admin(); return
+    st.caption("Templates, logos and aliases can be managed from Admin mode at the top of the app.")
     st.markdown("#### Upcoming fixture graphic generator")
     st.caption("Fixture details come from PlayCricket. You can correct any field before generating. Club logos are matched from your visual directory.")
     # Resolve home/away using the match detail endpoint, not the title order.
@@ -1930,6 +2026,18 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
+admin_col, admin_status = st.columns([1, 4])
+with admin_col:
+    if st.button("Admin mode" if not st.session_state.get("global_admin_view",False) else "Back to Studio", use_container_width=True, type="primary" if st.session_state.get("global_admin_view",False) else "secondary"):
+        st.session_state.global_admin_view = not st.session_state.get("global_admin_view",False)
+        st.rerun()
+with admin_status:
+    if st.session_state.get("global_admin_unlocked",False):
+        st.caption("Admin access unlocked")
+if st.session_state.get("global_admin_view",False):
+    global_admin_panel()
+    st.stop()
 
 stage = st.session_state.workflow
 
@@ -3163,54 +3271,7 @@ else:
                     )
 
             if st.session_state.team_publish_view == "template":
-                st.markdown("#### Template Manager")
-                st.caption("Admin access required to change the graphic template and typography.")
-                admin_password = st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947")
-                if not admin_password:
-                    st.info("To enable template administration, set TEMPLATE_ADMIN_PASSWORD in Streamlit Secrets.")
-                else:
-                    attempt = st.text_input("Admin password", type="password", key="template_admin_password")
-                    if attempt and hmac.compare_digest(attempt, str(admin_password)):
-                        st.success("Template administration unlocked for this session")
-                        st.caption("Changes are applied immediately. Upload a background or font and adjust text placement. Uploads are temporary until you save them to your GitHub repository.")
-                        new_background = st.file_uploader("Replace blank background (PNG)", type=["png"], key="admin_background")
-                        if new_background:
-                            st.session_state.graphic_template_bytes = new_background.getvalue()
-                        new_font = st.file_uploader("Replace font (licensed OTF or TTF)", type=["otf", "ttf"], key="admin_font")
-                        if new_font:
-                            st.session_state.graphic_font_bytes = new_font.getvalue()
-                        new_config = st.file_uploader("Import saved template settings (JSON)", type=["json"], key="admin_settings_import")
-                        if new_config and st.button("Apply imported settings"):
-                            try:
-                                values = json.loads(new_config.getvalue().decode("utf-8"))
-                                if not isinstance(values, dict):
-                                    raise ValueError("Expected JSON object")
-                                st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **{k:v for k,v in values.items() if k in DEFAULT_GRAPHIC_SETTINGS}}
-                                st.rerun()
-                            except (ValueError, UnicodeDecodeError) as exc:
-                                st.error(f"Invalid settings: {exc}")
-                        cfg = graphic_settings()
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            for key, label in [("left", "Left margin"), ("top", "Top margin"), ("title_size", "Grade font size"), ("details_size", "Fixture font size"), ("players_size", "Player font size")]:
-                                cfg[key] = st.number_input(label, min_value=10, max_value=250, value=int(cfg[key]), key="admin_"+key)
-                        with col_b:
-                            cfg["line_spacing"] = st.number_input("White player line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg["line_spacing"]), step=0.05, key="admin_line_spacing")
-                            cfg["yellow_line_spacing"] = st.number_input("Yellow fixture line spacing (Canva multiplier)", min_value=1.0, max_value=2.5, value=float(cfg.get("yellow_line_spacing", 1.3)), step=0.05, key="admin_yellow_line_spacing")
-                            cfg["yellow_bold_stroke"] = st.number_input("Yellow bold weight", min_value=0, max_value=5, value=int(cfg.get("yellow_bold_stroke", 1)), key="admin_yellow_bold_stroke")
-                            for key, label in [("section_gap", "Gap before players"), ("max_content_y", "Bottom limit for players")]:
-                                cfg[key] = st.number_input(label, min_value=0, max_value=1300, value=int(cfg[key]), key="admin_"+key)
-                            cfg["heading_color"] = st.color_picker("Heading colour", value=cfg["heading_color"], key="admin_heading_color")
-                            cfg["players_color"] = st.color_picker("Player colour", value=cfg["players_color"], key="admin_players_color")
-                        st.download_button(
-                            "Download template settings (JSON)",
-                            data=json.dumps(cfg, indent=2),
-                            file_name="hbcc_graphic_settings.json", mime="application/json",
-                        )
-                        st.caption("To keep background and font changes after a Streamlit restart, commit hbcc_team_template.png and your licensed font to your private repository. The font is never included in generated PNG ZIP downloads.")
-                    elif attempt:
-                        st.error("Incorrect admin password")
-
+                st.info("Template Manager has moved to the global Admin mode at the top of Content Studio. Log in once to manage both fixture and team selection templates, plus club visuals and aliases.")
 
             if st.session_state.team_publish_view == "announcement":
                 st.markdown("#### Combined team announcement")
