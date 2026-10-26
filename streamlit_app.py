@@ -16,6 +16,133 @@ from google.genai import types
 
 
 # ============================================================
+# PRIVATE SUPABASE PERSISTENCE (server-side credentials only)
+# ============================================================
+from urllib.parse import quote
+import uuid
+
+
+def sb_ready():
+    return bool(st.secrets.get("SUPABASE_URL") and st.secrets.get("SUPABASE_SECRET_KEY"))
+
+
+def sb_request(method, endpoint, *, json_data=None, data=None, content_type=None, params=None):
+    if not sb_ready():
+        raise RuntimeError("Supabase secrets are missing in Streamlit Cloud")
+    root = str(st.secrets["SUPABASE_URL"]).rstrip("/")
+    key = str(st.secrets["SUPABASE_SECRET_KEY"])
+    headers = {"apikey": key, "Authorization": "Bearer " + key}
+    if content_type:
+        headers["Content-Type"] = content_type
+    response = requests.request(method, root + endpoint, headers=headers,
+                                json=json_data, data=data, params=params, timeout=35)
+    if not response.ok:
+        raise RuntimeError(f"Supabase {response.status_code}: {response.text[:350]}")
+    return response
+
+
+def sb_rows(table):
+    return sb_request("GET", "/rest/v1/" + table, params={"select": "*"}).json()
+
+
+def sb_upsert(table, record):
+    return sb_request("POST", "/rest/v1/" + table, json_data=record,
+                      content_type="application/json", params={"on_conflict": "id" if table != "hbcc_settings" else "key"})
+
+
+def sb_delete(table, field, value):
+    sb_request("DELETE", "/rest/v1/" + table, params={field: "eq." + str(value)})
+
+
+def sb_upload(path, content):
+    # Private bucket: only this server-side secret can upload/download.
+    endpoint = "/storage/v1/object/hbcc-assets/" + quote(path, safe="/")
+    sb_request("POST", endpoint, data=content, content_type="image/png",
+               params={"upsert": "true"})
+    return path
+
+
+def sb_download(path):
+    if not path:
+        return None
+    return sb_request("GET", "/storage/v1/object/authenticated/hbcc-assets/" + quote(path, safe="/")).content
+
+
+def sb_image(uploaded):
+    image = Image.open(io.BytesIO(uploaded)).convert("RGBA")
+    image.thumbnail((2500, 2500))
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def sb_save_club(club, image_bytes=None):
+    # Existing GitHub logos remain a fallback unless replaced by a cloud upload.
+    if image_bytes is not None:
+        path = "club-logos/" + uuid.uuid4().hex + ".png"
+        sb_upload(path, image_bytes)
+        club["logo_path"] = path
+    club_id = str(club.get("id") or uuid.uuid4().hex)
+    club["id"] = club_id
+    sb_upsert("hbcc_clubs", {"id": club_id, "name": club["name"],
+              "abbreviation": club.get("abbr", ""), "aliases": club.get("aliases", []),
+              "logo_path": club.get("logo_path")})
+
+
+def sb_save_template(kind, name, image_bytes, settings):
+    if kind not in ("fixture", "team_selection"):
+        raise ValueError("Unknown template type")
+    template_id = ("fixture_" if kind == "fixture" else "team_") + re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    if not template_id.strip("_"):
+        raise ValueError("Enter a template name")
+    previous = next((t for t in st.session_state.get("sb_templates", []) if t["id"] == template_id), None)
+    path = previous.get("background_path") if previous else None
+    if image_bytes:
+        path = kind.replace("_", "-") + "-templates/" + uuid.uuid4().hex + ".png"
+        sb_upload(path, sb_image(image_bytes))
+    sb_upsert("hbcc_templates", {"id": template_id, "name": name,
+              "template_type": kind, "background_path": path, "settings": dict(settings)})
+    sb_refresh_templates()
+
+
+def sb_refresh_templates():
+    st.session_state.sb_templates = sb_rows("hbcc_templates")
+
+
+def sb_load_once():
+    if st.session_state.get("sb_loaded") or not sb_ready():
+        return
+    try:
+        cloud_clubs = sb_rows("hbcc_clubs")
+        local = fixture_library()
+        # Prefer cloud records over GitHub manifest, without dropping old clubs.
+        for record in cloud_clubs:
+            cloud = {"id": record["id"], "name": record["name"],
+                     "abbr": record.get("abbreviation") or "",
+                     "aliases": record.get("aliases") or [],
+                     "logo_path": record.get("logo_path")}
+            idx = next((i for i, c in enumerate(local) if c.get("id") == cloud["id"] or fixture_key(c.get("name")) == fixture_key(cloud["name"])), None)
+            if idx is None:
+                local.append(cloud)
+            else:
+                local[idx].update(cloud)
+        sb_refresh_templates()
+        for kind, key, settings_key in (("fixture", "fixture_background_bytes", "fixture_graphic_settings"),
+                                         ("team_selection", "graphic_template_bytes", "graphic_settings")):
+            selected = next((x for x in st.session_state.sb_templates if x["template_type"] == kind and x["id"] == ("fixture_default" if kind == "fixture" else "team_default")), None)
+            if selected:
+                if selected.get("background_path"):
+                    st.session_state[key] = sb_download(selected["background_path"])
+                if isinstance(selected.get("settings"), dict):
+                    if kind == "team_selection":
+                        st.session_state.graphic_settings_version = 3
+                    st.session_state[settings_key] = selected["settings"]
+        st.session_state.sb_loaded = True
+    except Exception as exc:
+        st.session_state.sb_error = str(exc)
+
+
+# ============================================================
 # HBCC CONTENT STUDIO
 # ============================================================
 
@@ -1492,6 +1619,16 @@ def fixture_library():
 
 
 def fixture_logo_bytes(entry):
+    if entry.get("logo_path") and sb_ready():
+        cache = st.session_state.setdefault("sb_logo_cache", {})
+        path = entry["logo_path"]
+        if path not in cache:
+            try:
+                cache[path] = sb_download(path)
+            except Exception:
+                cache[path] = None
+        if cache[path]:
+            return cache[path]
     filename = Path(str(entry.get("file", ""))).name
     if filename in st.session_state.fixture_uploaded_logos:
         return st.session_state.fixture_uploaded_logos[filename]
@@ -1667,7 +1804,8 @@ def fixture_asset_export():
         for club in fixture_library():
             raw = fixture_logo_bytes(club)
             if raw:
-                z.writestr(Path(str(club["file"])).name, raw)
+                filename = Path(str(club.get("file") or (fixture_key(club.get("name")) + ".png"))).name
+                z.writestr(filename, raw)
     return out.getvalue()
 
 
@@ -1677,7 +1815,7 @@ def fixture_admin():
     st.markdown("#### Fixture graphic template")
     st.caption("Upload a blank 1080 × 1350 background. Content Studio automatically overlays the title, match panels, logos, names, dates and venues.")
     uploaded = st.file_uploader("Blank fixture background (PNG/JPG)", type=["png", "jpg", "jpeg"], key="global_fixture_background")
-    if uploaded is not None and st.session_state.get("fixture_background_upload_hash") != (uploaded.name, len(uploaded.getvalue())):
+    if uploaded is not None and st.session_state.get("fixture_background_upload_hash") != (uploaded.name, len(uploaded.getvalue()), hash(uploaded.getvalue())):
         try:
             st.session_state.fixture_background_upload_hash=(uploaded.name,len(uploaded.getvalue()))
             im = Image.open(io.BytesIO(uploaded.getvalue()))
@@ -1698,17 +1836,40 @@ def fixture_admin():
     template_name=st.text_input("Template name",value="Fixture template 1",key="fixture_template_name")
     if st.button("Save current background as template",disabled=not bool(st.session_state.get("fixture_background_bytes"))):
         library[template_name.strip() or "Untitled template"]=st.session_state.fixture_background_bytes
-        st.success("Template saved for this session")
+        if sb_ready():
+            try:
+                sb_save_template("fixture", template_name.strip() or "Untitled template", st.session_state.fixture_background_bytes, cfg)
+                st.success("Template saved permanently to Supabase")
+            except Exception as exc:
+                st.error(f"Cloud save failed: {exc}")
+        else:
+            st.warning("Saved only for this session: Supabase not connected")
+    cloud_templates = [t for t in st.session_state.get("sb_templates", []) if t.get("template_type") == "fixture"]
+    for t in cloud_templates:
+        library.setdefault(t["name"], None)
     if library:
         chosen_template=st.selectbox("Choose a saved background",list(library),key="fixture_template_choice")
         if st.button("Apply selected background"):
-            st.session_state.fixture_background_bytes=library[chosen_template]
-            st.rerun()
+            try:
+                content = library[chosen_template]
+                cloud = next((t for t in cloud_templates if t["name"] == chosen_template), None)
+                if content is None and cloud and cloud.get("background_path"):
+                    content = sb_download(cloud["background_path"])
+                if content:
+                    st.session_state.fixture_background_bytes = content
+                if cloud and isinstance(cloud.get("settings"), dict):
+                    cfg.update(cloud["settings"])
+                    for key in ("admin_fixture_title", "admin_fixture_accent", "admin_fixture_title_size", "admin_fixture_cards_top", "admin_fixture_cards_bottom", "admin_fixture_logo_scale"):
+                        st.session_state.pop(key, None)
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not load template: {exc}")
         export=io.BytesIO()
         with zipfile.ZipFile(export,"w",zipfile.ZIP_DEFLATED) as archive:
             for name,data in library.items():
                 safe=re.sub(r"[^a-zA-Z0-9_-]+","_",name).strip("_") or "template"
-                archive.writestr(f"{safe}.png",data)
+                if data:
+                    archive.writestr(f"{safe}.png",data)
         st.download_button("Export all backgrounds (ZIP)",export.getvalue(),"fixture_background_templates.zip","application/zip")
     st.markdown("##### Text and layout")
     c1,c2=st.columns(2)
@@ -1729,7 +1890,18 @@ def fixture_admin():
             st.rerun()
         except (ValueError, UnicodeDecodeError) as ex:
             st.error(str(ex))
-    st.caption("Changes are active for this session. Export your background and settings to keep them after a Streamlit restart.")
+    st.divider()
+    st.markdown("##### Save permanently to Supabase")
+    if sb_ready():
+        if st.button("Save active fixture template permanently", type="primary", key="sb_save_fixture_default"):
+            try:
+                sb_save_template("fixture", "default", st.session_state.get("fixture_background_bytes"), cfg)
+                st.success("Fixture background and layout saved permanently.")
+            except Exception as exc:
+                st.error(f"Could not save: {exc}")
+        st.caption("The active template is loaded automatically whenever Content Studio starts.")
+    else:
+        st.warning("Add SUPABASE_URL and SUPABASE_SECRET_KEY to Streamlit Secrets to enable permanent saving.")
 
 
 def fixture_club_admin():
@@ -1758,11 +1930,28 @@ def fixture_club_admin():
                             st.session_state.fixture_uploaded_logos[filename]=buf.getvalue()
                             club["file"]=filename
                         except (OSError, ValueError): st.error("Invalid logo")
-                    st.success("Club details saved for this session")
+                    if sb_ready():
+                        try:
+                            image_data = st.session_state.fixture_uploaded_logos.get(club.get("file")) if logo else None
+                            sb_save_club(club, image_data)
+                            st.session_state.sb_logo_cache = {}
+                            st.success("Club details saved permanently to Supabase")
+                        except Exception as exc:
+                            st.error(f"Cloud save failed: {exc}")
+                    else:
+                        st.warning("Saved only for this session: Supabase not connected")
         raw=fixture_logo_bytes(club)
         if raw: st.image(raw,width=140)
         if st.button("Delete this club",key="delete_club_global"):
-            clubs.pop(selected);st.rerun()
+            if club.get("id") and sb_ready():
+                try:
+                    sb_delete("hbcc_clubs", "id", club["id"])
+                except Exception as exc:
+                    st.error(f"Could not delete from Supabase: {exc}")
+                    st.stop()
+            clubs.pop(selected)
+            st.warning("GitHub-supplied clubs will return after a restart unless removed from clubs.json.")
+            st.rerun()
     with st.expander("Add a new club",expanded=False):
         with st.form("add_new_fixture_club",clear_on_submit=True):
             name=st.text_input("New club name")
@@ -1778,15 +1967,26 @@ def fixture_club_admin():
                         filename=re.sub(r"[^a-z0-9]+","_",name.casefold()).strip("_")+".png"
                         st.session_state.fixture_uploaded_logos[filename]=buf.getvalue()
                         clubs.append({"name":name.strip(),"abbr":abbr.strip(),"aliases":[a.strip() for a in aliases.splitlines() if a.strip()],"file":filename})
-                        st.success("Club added for this session")
+                        if sb_ready():
+                            try:
+                                sb_save_club(clubs[-1], buf.getvalue())
+                                st.success("New club saved permanently to Supabase")
+                            except Exception as exc:
+                                st.error(f"Cloud save failed: {exc}")
+                        else:
+                            st.warning("Added only for this session: Supabase not connected")
                     except (OSError, ValueError): st.error("Invalid image")
     st.download_button("Export complete club library (ZIP)",fixture_asset_export(),"club_visuals.zip","application/zip",type="primary",use_container_width=True)
-    st.caption("Important: Streamlit Cloud does not permanently save uploads. Commit the exported ZIP contents to the club_visuals folder in GitHub to preserve new images and aliases.")
+    st.caption("Cloud changes save permanently when Supabase is connected. ZIP export is an optional backup. Existing GitHub club visuals remain available.")
+
+
+# Load persistent assets before the publishing UI renders.
+sb_load_once()
 
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -1804,6 +2004,14 @@ def global_admin_panel():
     if c2.button("Log out"):
         st.session_state.global_admin_unlocked=False
         st.rerun()
+    if st.session_state.get("sb_error"):
+        st.error("Supabase connection failed: " + st.session_state.sb_error)
+        if st.button("Retry Supabase connection"):
+            st.session_state.pop("sb_error", None)
+            st.session_state.pop("sb_loaded", None)
+            st.rerun()
+    elif sb_ready():
+        st.caption("Supabase connected · saved assets persist across restarts")
     tab_fixture,tab_team,tab_clubs=st.tabs(["Fixture templates","Team selection templates","Club visuals & aliases"])
     with tab_fixture: fixture_admin()
     with tab_team:
@@ -1811,7 +2019,10 @@ def global_admin_panel():
         st.caption("Upload a blank background; player names and match information are drawn over it automatically.")
         up=st.file_uploader("Team selection background",type=["png","jpg","jpeg"],key="global_team_bg")
         if up:
-            st.session_state.graphic_template_bytes=up.getvalue()
+            signature = (up.name, len(up.getvalue()), hash(up.getvalue()))
+            if st.session_state.get("team_background_upload_signature") != signature:
+                st.session_state.graphic_template_bytes = up.getvalue()
+                st.session_state.team_background_upload_signature = signature
         if st.session_state.get("graphic_template_bytes"):
             st.image(st.session_state.graphic_template_bytes,width=220)
             st.download_button("Download team background",st.session_state.graphic_template_bytes,"hbcc_team_template.png")
@@ -1821,6 +2032,33 @@ def global_admin_panel():
                 cfg[key]=st.number_input(label,10,250,int(cfg[key]),key="global_team_"+key)
             cfg["line_spacing"]=st.number_input("Player line spacing",1.0,2.5,float(cfg["line_spacing"]),.05,key="global_team_spacing")
         st.download_button("Export team template settings",json.dumps(cfg,indent=2),"hbcc_graphic_settings.json","application/json")
+        if st.button("Save active team selection template permanently", type="primary", key="sb_save_team_default"):
+            try:
+                sb_save_template("team_selection", "default", st.session_state.get("graphic_template_bytes"), cfg)
+                st.success("Team selection background and layout saved permanently.")
+            except Exception as exc:
+                st.error(f"Could not save: {exc}")
+        team_templates = [t for t in st.session_state.get("sb_templates", []) if t.get("template_type") == "team_selection"]
+        name = st.text_input("Save an additional team template as", value="Team selection alternative", key="sb_team_template_name")
+        if st.button("Save named team template", key="sb_save_named_team"):
+            try:
+                sb_save_template("team_selection", name, st.session_state.get("graphic_template_bytes"), cfg)
+                st.success("Additional team template saved permanently")
+            except Exception as exc:
+                st.error(f"Could not save: {exc}")
+        if team_templates:
+            choice = st.selectbox("Load saved team template", range(len(team_templates)), format_func=lambda i: team_templates[i]["name"], key="sb_team_choice")
+            if st.button("Apply selected team template"):
+                try:
+                    selected = team_templates[choice]
+                    if selected.get("background_path"):
+                        st.session_state.graphic_template_bytes = sb_download(selected["background_path"])
+                    cfg.update(selected.get("settings") or {})
+                    for key in ("left", "top", "title_size", "details_size", "players_size", "spacing"):
+                        st.session_state.pop("global_team_" + key, None)
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Could not load: {exc}")
     with tab_clubs: fixture_club_admin()
 
 
