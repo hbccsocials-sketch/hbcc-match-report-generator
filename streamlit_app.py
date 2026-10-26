@@ -186,6 +186,26 @@ def sb_load_once():
                     if kind == "team_selection":
                         st.session_state.graphic_settings_version = 3
                     st.session_state[settings_key] = selected["settings"]
+        # Restore the template selected by the admin on previous visits.
+        active_settings = sb_request("GET", "/rest/v1/hbcc_settings", params={
+            "key": "eq.active_fixture_template", "select": "value"}).json()
+        active_id = ((active_settings[0].get("value") or {}).get("id")
+                     if active_settings else "fixture_default")
+        active_record = next((t for t in st.session_state.sb_templates
+                              if t.get("id") == active_id and t.get("template_type") == "fixture"), None)
+        if active_record:
+            st.session_state.fixture_active_template_id = active_id
+            st.session_state.fixture_editor_selection = active_id
+            st.session_state.fixture_graphic_settings = {**{
+                "title": "UPCOMING MATCHES", "title_size": 90, "cards_top": 255,
+                "cards_bottom": 1175, "yellow": "#f5b82e", "logo_scale": 1.65,
+                "logo_bleed": 55}, **(active_record.get("settings") or {})}
+            if active_record.get("background_path"):
+                st.session_state.fixture_background_bytes = sb_download(active_record["background_path"])
+            else:
+                st.session_state.pop("fixture_background_bytes", None)
+        else:
+            st.session_state.setdefault("fixture_active_template_id", "fixture_default")
         st.session_state.sb_loaded = True
     except Exception as exc:
         st.session_state.sb_error = str(exc)
@@ -1856,98 +1876,128 @@ def fixture_asset_export():
 
 
 def fixture_admin():
-    """Global admin fixture editor; authorization is handled by admin_panel()."""
-    cfg = st.session_state.setdefault("fixture_graphic_settings", {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.65, "logo_bleed":55})
-    st.markdown("#### Fixture graphic template")
-    st.caption("Upload a blank 1080 × 1350 background. Content Studio automatically overlays the title, match panels, logos, names, dates and venues.")
-    uploaded = st.file_uploader("Blank fixture background (PNG/JPG)", type=["png", "jpg", "jpeg"], key="global_fixture_background")
-    if uploaded is not None and st.session_state.get("fixture_background_upload_hash") != (uploaded.name, len(uploaded.getvalue()), hash(uploaded.getvalue())):
-        try:
-            st.session_state.fixture_background_upload_hash=(uploaded.name,len(uploaded.getvalue()),hash(uploaded.getvalue()))
-            im = Image.open(io.BytesIO(uploaded.getvalue()))
-            im.verify()
-            st.session_state.fixture_background_bytes = uploaded.getvalue()
-        except (OSError, ValueError):
-            st.error("Invalid background image")
-    if st.session_state.get("fixture_background_bytes"):
-        st.image(st.session_state.fixture_background_bytes, width=220, caption="Current background (text and fixtures will be added automatically)")
-        st.download_button("Download current background", st.session_state.fixture_background_bytes, "fixture_background.png")
-        if st.button("Use built-in background instead", key="remove_fixture_background"):
-            st.session_state.pop("fixture_background_bytes", None)
-            st.rerun()
-    st.markdown("##### Saved background templates")
-    library=st.session_state.setdefault("fixture_background_templates", {})
-    if st.session_state.get("fixture_background_bytes") and not library:
-        library["Current background"]=st.session_state.fixture_background_bytes
-    template_name=st.text_input("Template name",value="Fixture template 1",key="fixture_template_name")
-    if st.button("Save current background as template",disabled=not bool(st.session_state.get("fixture_background_bytes"))):
-        library[template_name.strip() or "Untitled template"]=st.session_state.fixture_background_bytes
-        if sb_ready():
+    """Single-save, Supabase-backed fixture template manager."""
+    defaults = {"title": "UPCOMING MATCHES", "title_size": 90,
+                "cards_top": 255, "cards_bottom": 1175, "yellow": "#f5b82e",
+                "background": "Red to navy gradient", "logo_scale": 1.65,
+                "logo_bleed": 55}
+    st.markdown("#### Fixture templates")
+    st.caption("Choose a template, change its name or background, then click Save changes. All changes are stored in Supabase.")
+    if not sb_ready():
+        st.error("Supabase is not configured. Add SUPABASE_URL and SUPABASE_SECRET_KEY to Streamlit Secrets.")
+        return
+
+    try:
+        # Refresh the list when the admin editor is opened; no local-only template copies.
+        templates = sorted((t for t in sb_rows("hbcc_templates")
+                            if t.get("template_type") == "fixture"),
+                           key=lambda t: (t.get("name") or "").lower())
+        st.session_state.sb_templates = [t for t in st.session_state.get("sb_templates", [])
+                                         if t.get("template_type") != "fixture"] + templates
+    except Exception as exc:
+        st.error(f"Could not load templates: {exc}")
+        return
+
+    by_id = {t["id"]: t for t in templates}
+    options = list(by_id) + ["__new__"]
+    current = st.session_state.get("fixture_editor_selection", "fixture_default")
+    if current not in options:
+        current = options[0] if templates else "__new__"
+    st.session_state.fixture_editor_selection = current
+    selection = st.selectbox(
+        "Choose template", options, key="fixture_editor_selection",
+        format_func=lambda key: "+ Create new template" if key == "__new__"
+        else (by_id[key].get("name") or key) + (" (Default)" if key == "fixture_default" else ""),
+    )
+    record = by_id.get(selection, {})
+    # Inputs are bound to the chosen template's ID, so switching templates never
+    # reuses a stale name, uploader or slider value from another template.
+    prefix = "fixture_editor_" + selection
+    initial_settings = {**defaults, **(record.get("settings") or {})}
+    image_path = record.get("background_path")
+
+    with st.form("fixture_template_edit_form_" + selection, clear_on_submit=False):
+        name = st.text_input("Template name", value=record.get("name", "New fixture template"),
+                             key=prefix + "_name")
+        st.markdown("**Background image**")
+        if image_path:
             try:
-                sb_save_template("fixture", template_name.strip() or "Untitled template", st.session_state.fixture_background_bytes, cfg)
-                st.success("Template saved permanently to Supabase")
+                preview = sb_download(image_path)
+                if preview:
+                    st.image(preview, width=190, caption="Current saved background")
             except Exception as exc:
-                st.error(f"Cloud save failed: {exc}")
+                st.warning(f"Could not preview background: {exc}")
         else:
-            st.warning("Saved only for this session: Supabase not connected")
-    cloud_templates = [t for t in st.session_state.get("sb_templates", []) if t.get("template_type") == "fixture"]
-    for t in cloud_templates:
-        library.setdefault(t["name"], None)
-    if library:
-        chosen_template=st.selectbox("Choose a saved background",list(library),key="fixture_template_choice")
-        if st.button("Apply selected background"):
-            try:
-                content = library[chosen_template]
-                cloud = next((t for t in cloud_templates if t["name"] == chosen_template), None)
-                if content is None and cloud and cloud.get("background_path"):
-                    content = sb_download(cloud["background_path"])
-                if content:
-                    st.session_state.fixture_background_bytes = content
-                if cloud and isinstance(cloud.get("settings"), dict):
-                    cfg.update(cloud["settings"])
-                    for key in ("admin_fixture_title", "admin_fixture_accent", "admin_fixture_title_size", "admin_fixture_cards_top", "admin_fixture_cards_bottom", "admin_fixture_logo_scale"):
-                        st.session_state.pop(key, None)
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Could not load template: {exc}")
-        export=io.BytesIO()
-        with zipfile.ZipFile(export,"w",zipfile.ZIP_DEFLATED) as archive:
-            for name,data in library.items():
-                safe=re.sub(r"[^a-zA-Z0-9_-]+","_",name).strip("_") or "template"
-                if data:
-                    archive.writestr(f"{safe}.png",data)
-        st.download_button("Export all backgrounds (ZIP)",export.getvalue(),"fixture_background_templates.zip","application/zip")
-    st.markdown("##### Text and layout")
-    c1,c2=st.columns(2)
-    cfg["title"] = c1.text_input("Heading", value=str(cfg.get("title", "UPCOMING MATCHES")), key="admin_fixture_title")
-    cfg["yellow"] = c2.color_picker("Accent colour", value=cfg.get("yellow", "#f5b82e"), key="admin_fixture_accent")
-    with st.expander("Advanced layout settings", expanded=False):
-        cfg["title_size"] = st.slider("Heading size", 42, 115, int(cfg.get("title_size",90)), key="admin_fixture_title_size")
-        cfg["cards_top"] = st.slider("First card position", 195, 380, int(cfg.get("cards_top",255)), key="admin_fixture_cards_top")
-        cfg["cards_bottom"] = st.slider("Match area bottom", 950, 1220, int(cfg.get("cards_bottom",1175)), key="admin_fixture_cards_bottom")
-        cfg["logo_scale"] = st.slider("Logo scale", 1.0, 3.2, float(cfg.get("logo_scale",1.65)), .05, key="admin_fixture_logo_scale")
-    st.download_button("Export fixture settings", json.dumps(cfg,indent=2), "fixture_template_settings.json", "application/json")
-    import_cfg=st.file_uploader("Import fixture settings JSON",type=["json"],key="import_fixture_settings")
-    if import_cfg and st.button("Apply fixture settings"):
+            st.caption("No uploaded background — the built-in graphic background will be used.")
+        replace = st.checkbox("Replace background image", key=prefix + "_replace")
+        uploaded = st.file_uploader("New background (PNG or JPG, ideally 1080 × 1350)",
+                                    type=["png", "jpg", "jpeg"],
+                                    disabled=not replace, key=prefix + "_upload")
+        st.markdown("**Text and layout**")
+        c1, c2 = st.columns(2)
+        title = c1.text_input("Heading", value=str(initial_settings["title"]), key=prefix + "_title")
+        yellow = c2.color_picker("Accent colour", value=str(initial_settings["yellow"]),
+                                 key=prefix + "_yellow")
+        with st.expander("Advanced layout settings"):
+            title_size = st.slider("Heading size", 42, 115, int(initial_settings["title_size"]),
+                                   key=prefix + "_title_size")
+            cards_top = st.slider("First card position", 195, 380, int(initial_settings["cards_top"]),
+                                  key=prefix + "_cards_top")
+            cards_bottom = st.slider("Match area bottom", 950, 1220,
+                                     int(initial_settings["cards_bottom"]), key=prefix + "_cards_bottom")
+            logo_scale = st.slider("Logo scale", 1.0, 3.2, float(initial_settings["logo_scale"]),
+                                   0.05, key=prefix + "_logo_scale")
+        saved = st.form_submit_button("Save changes", type="primary", use_container_width=True)
+
+    if saved:
+        clean_name = name.strip()
+        if not clean_name:
+            st.error("Enter a template name before saving.")
+            return
+        if replace and uploaded is None:
+            st.error("Choose an image to replace the current background, or untick Replace background image.")
+            return
+        if selection == "__new__":
+            # Use a stable generated ID: renaming never changes this ID.
+            template_id = "fixture_" + uuid.uuid4().hex[:16]
+        else:
+            template_id = selection
+        settings = dict(initial_settings)
+        settings.update({"title": title, "yellow": yellow, "title_size": title_size,
+                         "cards_top": cards_top, "cards_bottom": cards_bottom,
+                         "logo_scale": logo_scale})
+        path = image_path
         try:
-            obj=json.loads(import_cfg.getvalue())
-            if not isinstance(obj,dict): raise ValueError("Expected JSON object")
-            cfg.update({k:v for k,v in obj.items() if k in cfg})
+            if replace and uploaded is not None:
+                # One predictable storage object per template, overwritten on replacement.
+                path = "fixture-templates/" + template_id + ".png"
+                sb_upload(path, sb_image(uploaded.getvalue()))
+            sb_upsert("hbcc_templates", {
+                "id": template_id, "name": clean_name, "template_type": "fixture",
+                "background_path": path, "settings": settings,
+            })
+            # The saved template immediately becomes the active design for graphics.
+            st.session_state.fixture_graphic_settings = settings
+            if path:
+                st.session_state.fixture_background_bytes = sb_download(path)
+            else:
+                st.session_state.pop("fixture_background_bytes", None)
+            sb_upsert("hbcc_settings", {"key": "active_fixture_template", "value": {"id": template_id}})
+            st.session_state.fixture_active_template_id = template_id
+            st.session_state.fixture_editor_selection = template_id
+            st.session_state.pop(prefix + "_replace", None)
+            st.success("Template saved to Supabase. It is now active for Upcoming Fixtures.")
             st.rerun()
-        except (ValueError, UnicodeDecodeError) as ex:
-            st.error(str(ex))
-    st.divider()
-    st.markdown("##### Save permanently to Supabase")
-    if sb_ready():
-        if st.button("Save active fixture template permanently", type="primary", key="sb_save_fixture_default"):
-            try:
-                sb_save_template("fixture", "default", st.session_state.get("fixture_background_bytes"), cfg)
-                st.success("Fixture background and layout saved permanently.")
-            except Exception as exc:
-                st.error(f"Could not save: {exc}")
-        st.caption("Saving settings does not duplicate the background. A replacement background uses one stable file per template. Older uploaded files are left untouched for safe manual cleanup.")
-    else:
-        st.warning("Add SUPABASE_URL and SUPABASE_SECRET_KEY to Streamlit Secrets to enable permanent saving.")
+        except Exception as exc:
+            st.error(f"Could not save template: {exc}")
+
+    if selection != "__new__":
+        active = st.session_state.get("fixture_active_template_id", "fixture_default")
+        if selection == active:
+            st.caption("This template is currently used for Upcoming Fixtures.")
+        else:
+            st.caption("Click Save changes to make this the active Upcoming Fixtures template.")
+    st.caption("No ZIP exports or extra Save buttons are required. Existing stored images are never deleted automatically.")
 
 
 def fixture_club_admin():
@@ -2032,7 +2082,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
