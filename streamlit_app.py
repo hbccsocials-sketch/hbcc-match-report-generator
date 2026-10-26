@@ -58,7 +58,7 @@ def sb_upsert(table, record):
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates,return=minimal",
     }
-    conflict_column = "key" if table == "hbcc_settings" else "id"
+    conflict_column = "key" if table == "hbcc_settings" else ("source_id" if table == "hbcc_club_mappings" else "id")
     response = requests.post(
         root + "/rest/v1/" + table,
         headers=headers,
@@ -1721,6 +1721,87 @@ def fixture_logo_bytes(entry):
     return None
 
 
+def fixture_team_identifiers(detail, team_name):
+    """Return explicit team identifiers only when a team object matches this name.
+
+    Never infer an identifier from a match ID, grade ID, or display position.
+    """
+    wanted = fixture_key(team_name)
+    if not wanted or not isinstance(detail, dict):
+        return []
+    found = set()
+    sources = [detail, detail.get("matchSummary"), detail.get("match")]
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        for team in teams_of(source):
+            if fixture_key(name_of(team)) != wanted:
+                continue
+            for field in ("teamId", "clubTeamId", "id"):
+                value = team.get(field)
+                if isinstance(value, (str, int)) and str(value).strip():
+                    found.add("team:" + str(value).strip())
+            # Club IDs must be explicitly marked as club identifiers.
+            for field in ("clubId", "organisationId", "organizationId"):
+                value = team.get(field)
+                if isinstance(value, (str, int)) and str(value).strip():
+                    found.add("club:" + str(value).strip())
+            club = team.get("club")
+            if isinstance(club, dict) and club.get("id"):
+                found.add("club:" + str(club["id"]).strip())
+    return sorted(found)
+
+
+def fixture_id_mappings():
+    if "fixture_id_mappings" not in st.session_state:
+        st.session_state.fixture_id_mappings = {}
+        if sb_ready():
+            try:
+                st.session_state.fixture_id_mappings = {
+                    str(r["source_id"]): str(r["club_id"])
+                    for r in sb_rows("hbcc_club_mappings")
+                }
+            except Exception as exc:
+                st.session_state.fixture_mapping_error = str(exc)
+    return st.session_state.fixture_id_mappings
+
+
+def fixture_club_by_id(club_id):
+    return next((c for c in fixture_library() if str(c.get("id")) == str(club_id)), None)
+
+
+def fixture_resolve_club(name, identifiers=None, override_id=None):
+    if override_id:
+        club = fixture_club_by_id(override_id)
+        if club:
+            return club, "manual"
+    mapping = fixture_id_mappings()
+    ids = identifiers or []
+    matches = {mapping[x] for x in ids if x in mapping and fixture_club_by_id(mapping[x])}
+    if len(matches) == 1:
+        return fixture_club_by_id(next(iter(matches))), "ID"
+    if len(matches) > 1:
+        return None, "conflicting IDs"
+    club = fixture_find_club(name)
+    return club, "name/alias" if club else "unmatched"
+
+
+def fixture_save_mapping(identifiers, club):
+    if not identifiers:
+        raise ValueError("No team/club ID was available. Select the logo manually for this fixture, but it cannot be remembered by ID.")
+    if not sb_ready():
+        raise ValueError("Supabase is not connected")
+    if not club.get("id"):
+        # Give original GitHub clubs a stable database identity first.
+        club["id"] = "club_" + fixture_key(club.get("name"))
+        sb_save_club(club)
+    for identifier in identifiers:
+        sb_upsert("hbcc_club_mappings", {
+            "source_id": identifier, "club_id": str(club["id"]),
+        })
+        fixture_id_mappings()[identifier] = str(club["id"])
+
+
 def fixture_find_club(name):
     key = fixture_key(name)
     if not key:
@@ -1838,7 +1919,8 @@ def fixture_graphic(rows, settings):
         y=top+i*(card_h+gap)
         home=row.get("home_name") or fixture_split_teams(row)[0]
         away=row.get("away_name") or fixture_split_teams(row)[1]
-        hc=fixture_find_club(home); ac=fixture_find_club(away)
+        hc,_=fixture_resolve_club(home, row.get("home_ids"), row.get("home_club_override"))
+        ac,_=fixture_resolve_club(away, row.get("away_ids"), row.get("away_club_override"))
         d.rounded_rectangle((68,y,1012,y+card_h),radius=24,fill="#0c1b37",outline=yellow,width=3)
         # Crop logos within their own side zones; leave the central details clear.
         size=int(card_h*float(settings.get("logo_scale",1.65)))
@@ -2154,7 +2236,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2400,7 +2482,55 @@ def fixture_publisher(chosen):
             home, away = (hawks, opponent) if side == "HBCC home" else (opponent, hawks)
         dates=st.session_state.get(f"fix_date_{mid}"," & ".join(row.get("playing_dates") or [row.get("date", "")]))
         rows.append({**row,"home_name":home,"away_name":away,"name":f"{home} vs {away}","venue":st.session_state.get(f"fix_venue_{mid}",row.get("venue") or "Venue TBC"),"playing_dates":[x.strip() for x in dates.split("&") if x.strip()]})
-    missing=sorted({name for row in rows for name in fixture_split_teams(row) if not fixture_find_club(name)})
+    # Match IDs from actual team objects, not the fixture's match/grade ID.
+    # Fetch details only for selected fixtures and cache them across reruns.
+    detail_cache = st.session_state.setdefault("fixture_logo_detail_cache", {})
+    for row in rows:
+        mid = row.get("id")
+        if mid and mid not in detail_cache:
+            try:
+                detail_cache[mid] = match_detail(mid)
+            except Exception:
+                detail_cache[mid] = {}
+        detail = detail_cache.get(mid) or {}
+        row["home_ids"] = fixture_team_identifiers(detail, row.get("home_name"))
+        row["away_ids"] = fixture_team_identifiers(detail, row.get("away_name"))
+
+    clubs = fixture_library()
+    # Existing GitHub club entries might lack IDs. Create deterministic local IDs
+    # for the dropdown, and persist them only when the user saves a mapping.
+    for c in clubs:
+        c.setdefault("id", "club_" + fixture_key(c.get("name")))
+    choices = [""] + [str(c["id"]) for c in clubs]
+    labels = {"": "Automatic matching"}
+    labels.update({str(c["id"]): str(c.get("name", "Unnamed")) for c in clubs})
+    with st.expander("Club logos — review matches and remember corrections", expanded=False):
+        st.caption("Uses PlayCricket club/team IDs where available, then names and aliases. Choose a logo to override a match; Save ID mapping remembers it for future fixtures.")
+        if st.session_state.get("fixture_mapping_error"):
+            st.warning("ID mapping database is unavailable. Run the companion SQL setup before saving mappings. " + st.session_state.fixture_mapping_error)
+        for row in rows:
+            st.markdown(f"**{row.get('grade', 'Match')} — {row.get('home_name')} vs {row.get('away_name')}**")
+            for side in ("home", "away"):
+                team = row.get(side + "_name", "")
+                ids = row.get(side + "_ids", [])
+                automatic, method = fixture_resolve_club(team, ids)
+                key = "fixture_logo_override_" + str(row.get("id")) + "_" + side
+                chosen_id = st.selectbox(
+                    f"{team} · {('matched by ' + method) if automatic else 'logo not matched'}",
+                    choices, format_func=lambda v: labels.get(v, v), key=key,
+                )
+                row[side + "_club_override"] = chosen_id or None
+                if chosen_id:
+                    st.caption("Source IDs: " + (", ".join(ids) if ids else "Not present in fixture details"))
+                    if st.button("Save ID mapping for " + team, key="save_map_" + str(row.get("id")) + side):
+                        try:
+                            fixture_save_mapping(ids, fixture_club_by_id(chosen_id))
+                            st.success("Mapping saved to Supabase for future fixtures")
+                        except Exception as exc:
+                            st.error(str(exc))
+                elif automatic:
+                    st.caption("Selected: " + str(automatic.get("name")) + " (" + method + ")")
+    missing=sorted({name for row in rows for name,ids,override in ((row.get("home_name"),row.get("home_ids"),row.get("home_club_override")),(row.get("away_name"),row.get("away_ids"),row.get("away_club_override"))) if not fixture_resolve_club(name,ids,override)[0]})
     if missing:
         st.warning(f"No matching logo for {len(missing)} team name(s): {', '.join(missing[:7])}{'…' if len(missing)>7 else ''}. Text abbreviations will be shown until you add visuals in Template Manager.")
     groups=[rows[i:i+3] for i in range(0,len(rows),3)]
