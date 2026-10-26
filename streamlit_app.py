@@ -2182,7 +2182,8 @@ def fixture_admin():
 
     by_id = {t["id"]: t for t in templates}
     options = list(by_id) + ["__new__"]
-    current = st.session_state.get("fixture_editor_selection", "fixture_default")
+    pending = st.session_state.pop("fixture_editor_pending_selection", None)
+    current = pending or st.session_state.get("fixture_editor_selection", "fixture_default")
     if current not in options:
         current = options[0] if templates else "__new__"
     st.session_state.fixture_editor_selection = current
@@ -2260,7 +2261,7 @@ def fixture_admin():
                 st.session_state.pop("fixture_background_bytes", None)
             sb_upsert("hbcc_settings", {"key": "active_fixture_template", "value": {"id": template_id}})
             st.session_state.fixture_active_template_id = template_id
-            st.session_state.fixture_editor_selection = template_id
+            st.session_state.fixture_editor_pending_selection = template_id
             st.session_state.pop(prefix + "_replace", None)
             st.success("Template saved to Supabase. It is now active for Upcoming Fixtures.")
             st.rerun()
@@ -2322,7 +2323,7 @@ def fixture_admin():
                                 st.session_state.pop("fixture_background_bytes", None)
                         else:
                             st.session_state.pop("fixture_background_bytes", None)
-                        st.session_state.fixture_editor_selection = fallback["id"]
+                        st.session_state.fixture_editor_pending_selection = fallback["id"]
                         sb_refresh_templates()
                         if warning:
                             st.warning("Template deleted, but its unused background could not be removed: " + warning)
