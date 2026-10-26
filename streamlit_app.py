@@ -227,8 +227,8 @@ def sb_load_once():
             st.session_state.fixture_active_template_id = active_id
             st.session_state.fixture_editor_selection = active_id
             st.session_state.fixture_graphic_settings = {**{
-                "title": "UPCOMING MATCHES", "title_size": 90, "cards_top": 255,
-                "cards_bottom": 1175, "yellow": "#f5b82e", "logo_scale": 1.65,
+                "title": "UPCOMING MATCHES", "title_size": 90, "cards_top": 240,
+                "cards_bottom": 1045, "yellow": "#f5b82e", "logo_scale": 1.65,
                 "logo_bleed": 55}, **(active_record.get("settings") or {})}
             if active_record.get("background_path"):
                 st.session_state.fixture_background_bytes = sb_download(active_record["background_path"])
@@ -2026,7 +2026,12 @@ def fixture_graphic(rows, settings):
         d.line((w-55,45,w-55,100),fill=yellow,width=6)
     # Heading is part of the uploaded background; do not draw a second title.
     n=len(rows)
-    top=int(settings.get("cards_top",255));bottom=int(settings.get("cards_bottom",1175))
+    # Reserve the lower ~300px for the club crest and sponsor artwork already
+    # embedded in the selected 1080x1350 fixture background template.
+    # Cap old saved layout settings too, so existing Supabase templates benefit
+    # immediately without requiring an admin to re-save every template.
+    top=min(int(settings.get("cards_top", 240)), 240)
+    bottom=min(int(settings.get("cards_bottom", 1045)), 1045)
     # Use a fixed three-slot layout on every page, including pages with 1 or 2 fixtures.
     # This prevents the final page from stretching cards and logos vertically.
     gap=24; card_h=max(185,(bottom-top-gap*2)//3)
@@ -2155,7 +2160,7 @@ def fixture_asset_export():
 def fixture_admin():
     """Single-save, Supabase-backed fixture template manager."""
     defaults = {"title": "UPCOMING MATCHES", "title_size": 90,
-                "cards_top": 255, "cards_bottom": 1175, "yellow": "#f5b82e",
+                "cards_top": 240, "cards_bottom": 1045, "yellow": "#f5b82e",
                 "background": "Red to navy gradient", "logo_scale": 1.65,
                 "logo_bleed": 55}
     st.markdown("#### Fixture templates")
@@ -2213,10 +2218,10 @@ def fixture_admin():
         st.markdown("**Match card layout**")
         st.caption("Your background supplies the heading. These controls position the match cards and logos only.")
         with st.expander("Adjust match cards", expanded=False):
-            cards_top = st.slider("First card position", 195, 380, int(initial_settings["cards_top"]),
+            cards_top = st.slider("First card position", 195, 240, min(240, int(initial_settings["cards_top"])),
                                   key=prefix + "_cards_top")
-            cards_bottom = st.slider("Match area bottom", 950, 1220,
-                                     int(initial_settings["cards_bottom"]), key=prefix + "_cards_bottom")
+            cards_bottom = st.slider("Match area bottom", 950, 1045,
+                                     min(1045, int(initial_settings["cards_bottom"])), key=prefix + "_cards_bottom")
             logo_scale = st.slider("Logo scale", 1.0, 3.2, float(initial_settings["logo_scale"]),
                                    0.05, key=prefix + "_logo_scale")
         saved = st.form_submit_button("Save changes", type="primary", use_container_width=True)
@@ -2573,7 +2578,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2741,7 +2746,7 @@ def team_template_admin():
 def fixture_publisher(chosen):
     # The page already displays the section title and match count.
     if "fixture_graphic_settings" not in st.session_state:
-        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":255, "cards_bottom":1175, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.65, "logo_bleed":55}
+        st.session_state.fixture_graphic_settings = {"title":"UPCOMING MATCHES", "title_size":90, "cards_top":240, "cards_bottom":1045, "yellow":"#f5b82e", "background":"Red to navy gradient", "logo_scale":1.65, "logo_bleed":55}
     fixture_library()
     if "fixture_view" not in st.session_state:
         st.session_state.fixture_view = "graphics"
@@ -3706,7 +3711,8 @@ def results_publisher(chosen):
         st.warning('No completed matches with recorded scores to export yet.')
         return
     st.markdown(f"**{len(publishable)} results · {(len(publishable)+1)//2} graphics ready**")
-    # Build combined graphics only after all editors have updated their rows.
+    # Build combined graphics after all editors have updated their rows.
+    # Match the Upcoming Fixtures gallery: up to three portrait previews per row.
     for offset in range(0, len(publishable), 2):
         batch = publishable[offset:offset+2]
         rows = []
@@ -3717,14 +3723,19 @@ def results_publisher(chosen):
             rows.append(result_row)
         graphic = results_render_pair(rows)
         graphic_num = offset // 2 + 1
-        label = f"Graphic {graphic_num} · {len(batch)} match{'es' if len(batch)>1 else ''}"
-        st.markdown(f"**{label}**")
-        st.image(graphic, use_container_width=True)
         filename = f"HBCC_Match_Results_{graphic_num:02d}.png"
-        st.download_button(f"Download graphic {graphic_num} (PNG)", graphic_png(graphic),
-                           filename, "image/png", key=f"results_pair_{graphic_num}",
-                           use_container_width=True)
         images.append((filename, graphic))
+
+    gallery = st.columns(min(3, len(images)))
+    for i, (filename, graphic) in enumerate(images):
+        match_count = min(2, len(publishable) - 2 * i)
+        with gallery[i % len(gallery)]:
+            st.image(graphic_png(graphic),
+                     caption=f"Graphic {i+1} · {match_count} match{'es' if match_count > 1 else ''}",
+                     use_container_width=True)
+            st.download_button(f"Download graphic {i+1}", graphic_png(graphic),
+                               filename, "image/png", key=f"results_pair_{i+1}",
+                               use_container_width=True)
     if images:
         import zipfile
         archive = io.BytesIO()
