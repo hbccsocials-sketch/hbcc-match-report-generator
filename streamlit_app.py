@@ -2045,6 +2045,20 @@ def fixture_graphic(rows, settings):
         # Centre the visual in each side panel, rather than pinning it to the inner edge.
         fixture_logo_paste(background,hc,((left_zone[0]+left_zone[2])/2,y+card_h/2),size,left_zone)
         fixture_logo_paste(background,ac,((right_zone[0]+right_zone[2])/2,y+card_h/2),size,right_zone)
+        # Match Results-style soft fade: the inner edge of each logo panel
+        # gradually blends into the fixture card's navy central background.
+        # Keep the outside of each logo visible and the text panel untouched.
+        fade_width = 82
+        navy = (12, 27, 55)
+        for edge, direction in ((left_zone[2], 1), (right_zone[0], -1)):
+            for step in range(fade_width):
+                progress = step / max(1, fade_width - 1)
+                x = edge - fade_width + step if direction == 1 else edge + step
+                opacity = progress if direction == 1 else 1.0 - progress
+                opacity = opacity * opacity * (3 - 2 * opacity)
+                overlay = Image.new("RGB", (1, card_h - 8), navy)
+                mask = Image.new("L", overlay.size, round(opacity * 255))
+                background.paste(overlay, (int(x), y + 4), mask)
         d=ImageDraw.Draw(background)
         # Semi-opaque centre provides guaranteed legibility, even with vivid club art.
         d.rectangle((305,y+5,775,y+card_h-5),fill="#0c1b37")
@@ -3390,6 +3404,21 @@ def results_render_pair(rows):
                            clip_box=(left+4, top+4, left_end, bottom-4))
         fixture_logo_paste(img, away_club, ((right_start + right)//2, (top + bottom)//2),
                            clip_box=(right_start, top+4, right-4, bottom-4))
+        # Soft horizontal transition from both full-height logo panels into
+        # the solid navy scoreboard. Keep the outside edges and logo height intact.
+        fade_width = 82
+        navy = (12, 27, 55)  # same as the card's #0c1b37 centre
+        for edge, direction in ((left_end, 1), (right_start, -1)):
+            for step in range(fade_width):
+                # 0 at the outer side of the fade; 1 at the inner side.
+                progress = step / max(1, fade_width - 1)
+                x = edge - fade_width + step if direction == 1 else edge + step
+                opacity = progress if direction == 1 else 1.0 - progress
+                # Smoothstep removes hard visible edges in the blend.
+                opacity = opacity * opacity * (3 - 2 * opacity)
+                overlay = Image.new("RGB", (1, bottom - top - 8), navy)
+                mask = Image.new("L", overlay.size, round(opacity * 255))
+                img.paste(overlay, (int(x), top + 4), mask)
         d = ImageDraw.Draw(img)
         # Restore the frame on top of the images.
         d.rounded_rectangle((left, top, right, bottom), radius=22,
