@@ -3414,9 +3414,26 @@ def draw_faded_navy_band(draw, x0, y0, x1, y1, base="#0c1b37", highlight="#243b6
         draw.line((int(x0+i), int(y0), int(x0+i), int(y1)), fill=color, width=1)
 
 
+def results_is_empty_innings(value):
+    """Treat a zero-run, zero-wicket innings as an unplayed placeholder."""
+    raw = str(value or "").strip()
+    return bool(re.fullmatch(r"0\s*/\s*0(?:\s*\([^)]*\))?", raw))
+
+
+def results_hide_performance(kind, figures):
+    """Suppress empty bowling (0/0) and zero-run batting highlights."""
+    raw = str(figures or "").strip()
+    if not raw:
+        return True
+    if kind == "ball":
+        return bool(re.match(r"^0\s*/\s*0(?:\D|$)", raw))
+    # Batting: the leading number is runs; e.g. 0 (4), 0*, 0.
+    return bool(re.match(r"^0(?:\s*\(|\s*\*|\s*$)", raw))
+
+
 def results_score_lines(value):
     """Return display-ready innings totals, keeping multiple innings separate."""
-    parts = [part.strip() for part in str(value or '').split('|') if part.strip()]
+    parts = [part.strip() for part in str(value or '').split('|') if part.strip() and not results_is_empty_innings(part)]
     return [results_wickets_first(part) for part in parts]
 
 
@@ -3504,8 +3521,25 @@ def results_render_pair(rows):
         # Always reserve a genuine two-line name area, with the VS in its
         # own centre gutter (rather than crowding a long club name).
         name_width = min(col_width - 14, (centre_right - centre_left) * 0.425)
-        font, names = fixture_equal_team_names(d, hname, aname, name_width,
-                                                max_size=32, min_size=18)
+        # Match Results: keep Hawthorn Boroondara on two balanced lines,
+        # regardless of the space available for a single-line label.
+        def result_name_lines(name, font):
+            cleaned = " ".join(str(name).split())
+            if cleaned.casefold() == "hawthorn boroondara":
+                return ["Hawthorn", "Boroondara"]
+            return fixture_wrapped_lines(d, cleaned, name_width, font, max_lines=99)
+
+        for name_size in range(32, 17, -1):
+            font = fixture_font(name_size, True)
+            names = [result_name_lines(hname, font), result_name_lines(aname, font)]
+            if all(len(lines) <= 2 and all(
+                d.textbbox((0, 0), line, font=font)[2] <= name_width
+                for line in lines
+            ) for lines in names):
+                break
+        else:
+            font = fixture_font(18, True)
+            names = [result_name_lines(hname, font)[:2], result_name_lines(aname, font)[:2]]
         line_h = font.size + 4
         for x, lines in zip((col_left, col_right), names):
             y0 = top + 105 + (2-len(lines))*line_h/2
@@ -3542,6 +3576,8 @@ def results_render_pair(rows):
                 pname = str(row.get(f"{kind}{n}_name") or "").strip()
                 figures = str(row.get(f"{kind}{n}_figures") or "").strip()
                 if not pname and not figures:
+                    continue
+                if results_hide_performance(kind, figures):
                     continue
                 # Single-line stat row gives larger, more legible type on phones.
                 combined = f"{pname}  {figures}".strip()
