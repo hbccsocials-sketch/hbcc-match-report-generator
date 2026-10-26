@@ -1602,7 +1602,9 @@ def fixture_graphic(rows, settings):
     fixture_center(d,w//2,78,title,fixture_text_fit(d,title,w-115,int(settings.get("title_size",90)),42,True),yellow)
     n=len(rows)
     top=int(settings.get("cards_top",255));bottom=int(settings.get("cards_bottom",1175))
-    gap=24; card_h=max(185,(bottom-top-gap*(n-1))//max(1,n))
+    # Use a fixed three-slot layout on every page, including pages with 1 or 2 fixtures.
+    # This prevents the final page from stretching cards and logos vertically.
+    gap=24; card_h=max(185,(bottom-top-gap*2)//3)
     for i,row in enumerate(rows):
         y=top+i*(card_h+gap)
         home=row.get("home_name") or fixture_split_teams(row)[0]
