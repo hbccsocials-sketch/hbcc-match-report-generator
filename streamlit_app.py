@@ -186,6 +186,20 @@ def sb_load_once():
                     if kind == "team_selection":
                         st.session_state.graphic_settings_version = 3
                     st.session_state[settings_key] = selected["settings"]
+        # Restore the selected team background and settings across restarts.
+        team_active_rows = sb_request("GET", "/rest/v1/hbcc_settings", params={
+            "key": "eq.active_team_template", "select": "value"}).json()
+        team_active_id = ((team_active_rows[0].get("value") or {}).get("id")
+                          if team_active_rows else "team_default")
+        active_team = next((t for t in st.session_state.sb_templates
+                            if t.get("id") == team_active_id and t.get("template_type") == "team_selection"), None)
+        if active_team:
+            st.session_state.team_active_template_id = team_active_id
+            st.session_state.team_editor_selection = team_active_id
+            st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **(active_team.get("settings") or {})}
+            st.session_state.graphic_settings_version = 3
+            if active_team.get("background_path"):
+                st.session_state.graphic_template_bytes = sb_download(active_team["background_path"])
         # Restore the template selected by the admin on previous visits.
         active_settings = sb_request("GET", "/rest/v1/hbcc_settings", params={
             "key": "eq.active_fixture_template", "select": "value"}).json()
@@ -1814,8 +1828,7 @@ def fixture_graphic(rows, settings):
         d.line((w-112,45,w-55,45),fill=yellow,width=6)
     if not custom_bg:
         d.line((w-55,45,w-55,100),fill=yellow,width=6)
-    title = str(settings.get("title","UPCOMING MATCHES"))
-    fixture_center(d,w//2,78,title,fixture_text_fit(d,title,w-115,int(settings.get("title_size",90)),42,True),yellow)
+    # Heading is part of the uploaded background; do not draw a second title.
     n=len(rows)
     top=int(settings.get("cards_top",255));bottom=int(settings.get("cards_bottom",1175))
     # Use a fixed three-slot layout on every page, including pages with 1 or 2 fixtures.
@@ -1933,14 +1946,9 @@ def fixture_admin():
         uploaded = st.file_uploader("New background (PNG or JPG, ideally 1080 × 1350)",
                                     type=["png", "jpg", "jpeg"],
                                     disabled=not replace, key=prefix + "_upload")
-        st.markdown("**Text and layout**")
-        c1, c2 = st.columns(2)
-        title = c1.text_input("Heading", value=str(initial_settings["title"]), key=prefix + "_title")
-        yellow = c2.color_picker("Accent colour", value=str(initial_settings["yellow"]),
-                                 key=prefix + "_yellow")
-        with st.expander("Advanced layout settings"):
-            title_size = st.slider("Heading size", 42, 115, int(initial_settings["title_size"]),
-                                   key=prefix + "_title_size")
+        st.markdown("**Match card layout**")
+        st.caption("Your background supplies the heading. These controls position the match cards and logos only.")
+        with st.expander("Adjust match cards", expanded=False):
             cards_top = st.slider("First card position", 195, 380, int(initial_settings["cards_top"]),
                                   key=prefix + "_cards_top")
             cards_bottom = st.slider("Match area bottom", 950, 1220,
@@ -1963,8 +1971,7 @@ def fixture_admin():
         else:
             template_id = selection
         settings = dict(initial_settings)
-        settings.update({"title": title, "yellow": yellow, "title_size": title_size,
-                         "cards_top": cards_top, "cards_bottom": cards_bottom,
+        settings.update({"cards_top": cards_top, "cards_bottom": cards_bottom,
                          "logo_scale": logo_scale})
         path = image_path
         try:
@@ -1990,6 +1997,71 @@ def fixture_admin():
             st.rerun()
         except Exception as exc:
             st.error(f"Could not save template: {exc}")
+
+    if selection != "__new__":
+        # Destructive actions live outside the edit form and require confirmation.
+        with st.expander("Delete this template", expanded=False):
+            if len(templates) <= 1:
+                st.info("Keep at least one fixture template. Create another template before deleting this one.")
+            else:
+                st.warning(f"This permanently deletes the template ‘{record.get('name') or selection}’. It cannot be undone.")
+                confirm_key = prefix + "_confirm_delete"
+                confirmed = st.checkbox("I understand this template will be deleted", key=confirm_key)
+                if st.button("Delete template", type="secondary", disabled=not confirmed,
+                             key=prefix + "_delete", use_container_width=True):
+                    try:
+                        # Recheck live records to avoid deleting the final template.
+                        live = [t for t in sb_rows("hbcc_templates")
+                                if t.get("template_type") == "fixture"]
+                        selected_live = next((t for t in live if t.get("id") == selection), None)
+                        survivors = [t for t in live if t.get("id") != selection]
+                        if selected_live is None:
+                            st.error("This template was already deleted. Refresh the page.")
+                            st.stop()
+                        if not survivors:
+                            st.error("Cannot delete the last remaining fixture template.")
+                            st.stop()
+                        active_id = st.session_state.get("fixture_active_template_id", "fixture_default")
+                        if active_id == selection:
+                            fallback = next((t for t in survivors if t.get("id") == "fixture_default"), survivors[0])
+                            # Switch the active template before removing the current one.
+                            sb_upsert("hbcc_settings", {"key": "active_fixture_template",
+                                                            "value": {"id": fallback["id"]}})
+                        else:
+                            fallback = next((t for t in survivors if t.get("id") == active_id), survivors[0])
+                        sb_delete("hbcc_templates", "id", selection)
+                        # Only delete a background owned by this template, if no
+                        # remaining template points to the same object. Historical
+                        # random-name files are left intact for safe manual cleanup.
+                        old_path = selected_live.get("background_path") or ""
+                        owned_path = "fixture-templates/" + selection + ".png"
+                        warning = None
+                        if old_path == owned_path and not any(
+                                t.get("background_path") == old_path for t in survivors):
+                            try:
+                                sb_request("DELETE", "/storage/v1/object/hbcc-assets/" +
+                                           quote(old_path, safe="/"))
+                            except Exception as image_exc:
+                                warning = str(image_exc)
+                        st.session_state.fixture_active_template_id = fallback["id"]
+                        st.session_state.fixture_graphic_settings = {
+                            **defaults, **(fallback.get("settings") or {})}
+                        if fallback.get("background_path"):
+                            try:
+                                st.session_state.fixture_background_bytes = sb_download(fallback["background_path"])
+                            except Exception:
+                                st.session_state.pop("fixture_background_bytes", None)
+                        else:
+                            st.session_state.pop("fixture_background_bytes", None)
+                        st.session_state.fixture_editor_selection = fallback["id"]
+                        sb_refresh_templates()
+                        if warning:
+                            st.warning("Template deleted, but its unused background could not be removed: " + warning)
+                        else:
+                            st.success("Template deleted. Another saved template is now selected.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Could not delete template: {exc}")
 
     if selection != "__new__":
         active = st.session_state.get("fixture_active_template_id", "fixture_default")
@@ -2111,51 +2183,138 @@ def global_admin_panel():
     tab_fixture,tab_team,tab_clubs=st.tabs(["Fixture templates","Team selection templates","Club visuals & aliases"])
     with tab_fixture: fixture_admin()
     with tab_team:
-        st.markdown("#### Team selection template")
-        st.caption("Upload a blank background; player names and match information are drawn over it automatically.")
-        up=st.file_uploader("Team selection background",type=["png","jpg","jpeg"],key="global_team_bg")
-        if up:
-            signature = (up.name, len(up.getvalue()), hash(up.getvalue()))
-            if st.session_state.get("team_background_upload_signature") != signature:
-                st.session_state.graphic_template_bytes = up.getvalue()
-                st.session_state.team_background_upload_signature = signature
-        if st.session_state.get("graphic_template_bytes"):
-            st.image(st.session_state.graphic_template_bytes,width=220)
-            st.download_button("Download team background",st.session_state.graphic_template_bytes,"hbcc_team_template.png")
-        cfg=graphic_settings()
-        with st.expander("Text placement and typography",expanded=False):
-            for key,label in [("left","Left margin"),("top","Top margin"),("title_size","Grade size"),("details_size","Fixture details size"),("players_size","Player names size")]:
-                cfg[key]=st.number_input(label,10,250,int(cfg[key]),key="global_team_"+key)
-            cfg["line_spacing"]=st.number_input("Player line spacing",1.0,2.5,float(cfg["line_spacing"]),.05,key="global_team_spacing")
-        st.download_button("Export team template settings",json.dumps(cfg,indent=2),"hbcc_graphic_settings.json","application/json")
-        if st.button("Save active team selection template permanently", type="primary", key="sb_save_team_default"):
-            try:
-                sb_save_template("team_selection", "default", st.session_state.get("graphic_template_bytes"), cfg)
-                st.success("Team selection background and layout saved permanently.")
-            except Exception as exc:
-                st.error(f"Could not save: {exc}")
-        team_templates = [t for t in st.session_state.get("sb_templates", []) if t.get("template_type") == "team_selection"]
-        name = st.text_input("Save an additional team template as", value="Team selection alternative", key="sb_team_template_name")
-        if st.button("Save named team template", key="sb_save_named_team"):
-            try:
-                sb_save_template("team_selection", name, st.session_state.get("graphic_template_bytes"), cfg)
-                st.success("Additional team template saved permanently")
-            except Exception as exc:
-                st.error(f"Could not save: {exc}")
-        if team_templates:
-            choice = st.selectbox("Load saved team template", range(len(team_templates)), format_func=lambda i: team_templates[i]["name"], key="sb_team_choice")
-            if st.button("Apply selected team template"):
-                try:
-                    selected = team_templates[choice]
-                    if selected.get("background_path"):
-                        st.session_state.graphic_template_bytes = sb_download(selected["background_path"])
-                    cfg.update(selected.get("settings") or {})
-                    for key in ("left", "top", "title_size", "details_size", "players_size", "spacing"):
-                        st.session_state.pop("global_team_" + key, None)
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Could not load: {exc}")
+        team_template_admin()
     with tab_clubs: fixture_club_admin()
+
+
+def team_template_admin():
+    """Supabase-backed team selection templates: select, rename, replace, save, delete."""
+    st.markdown("#### Team selection templates")
+    st.caption("Choose a template, rename it or replace its background, then Save changes. Player information is added automatically.")
+    if not sb_ready():
+        st.error("Supabase is not configured. Check Streamlit Secrets.")
+        return
+    try:
+        templates = sorted((t for t in sb_rows("hbcc_templates")
+                            if t.get("template_type") == "team_selection"),
+                           key=lambda t: (t.get("name") or "").lower())
+        st.session_state.sb_templates = [t for t in st.session_state.get("sb_templates", [])
+                                         if t.get("template_type") != "team_selection"] + templates
+    except Exception as exc:
+        st.error(f"Could not load team templates: {exc}")
+        return
+    by_id = {t["id"]: t for t in templates}
+    options = list(by_id) + ["__new__"]
+    current = st.session_state.get("team_editor_selection", "team_default")
+    if current not in options:
+        current = options[0] if templates else "__new__"
+    st.session_state.team_editor_selection = current
+    selection = st.selectbox("Choose template", options, key="team_editor_selection",
+                             format_func=lambda k: "+ Create new template" if k == "__new__"
+                             else (by_id[k].get("name") or k))
+    record = by_id.get(selection, {})
+    prefix = "team_editor_" + selection
+    initial_settings = {**DEFAULT_GRAPHIC_SETTINGS, **(record.get("settings") or {})}
+    image_path = record.get("background_path")
+    with st.form("team_template_edit_form_" + selection):
+        name = st.text_input("Template name", value=record.get("name", "New team selection template"),
+                             key=prefix + "_name")
+        st.markdown("**Background image**")
+        if image_path:
+            try:
+                preview = sb_download(image_path)
+                if preview:
+                    st.image(preview, width=190, caption="Current saved background")
+            except Exception as exc:
+                st.warning(f"Could not preview background: {exc}")
+        else:
+            st.caption("No saved background. Upload one to create this template.")
+        replace = st.checkbox("Upload or replace background image", key=prefix + "_replace",
+                              value=selection == "__new__")
+        uploaded = st.file_uploader("Background (PNG or JPG, ideally 1080 × 1350)",
+                                    type=["png", "jpg", "jpeg"], disabled=not replace,
+                                    key=prefix + "_upload")
+        with st.expander("Adjust player text layout", expanded=False):
+            left = st.number_input("Left margin", 10, 250, int(initial_settings["left"]), key=prefix+"_left")
+            top = st.number_input("Top margin", 10, 250, int(initial_settings["top"]), key=prefix+"_top")
+            grade_size = st.number_input("Grade size", 10, 150, int(initial_settings["title_size"]), key=prefix+"_grade")
+            details_size = st.number_input("Fixture details size", 10, 150, int(initial_settings["details_size"]), key=prefix+"_details")
+            players_size = st.number_input("Player names size", 10, 150, int(initial_settings["players_size"]), key=prefix+"_players")
+            spacing = st.number_input("Player line spacing", 1.0, 2.5, float(initial_settings["line_spacing"]), 0.05, key=prefix+"_spacing")
+        saved = st.form_submit_button("Save changes", type="primary", use_container_width=True)
+    if saved:
+        clean_name = name.strip()
+        if not clean_name:
+            st.error("Enter a template name.")
+            return
+        if replace and uploaded is None:
+            st.error("Choose a background image or untick the replacement option.")
+            return
+        template_id = ("team_" + uuid.uuid4().hex[:16]) if selection == "__new__" else selection
+        settings = dict(initial_settings)
+        settings.update({"left":left, "top":top, "title_size":grade_size,
+                         "details_size":details_size, "players_size":players_size,
+                         "line_spacing":spacing})
+        path = image_path
+        try:
+            if replace and uploaded is not None:
+                path = "team-selection-templates/" + template_id + ".png"
+                sb_upload(path, sb_image(uploaded.getvalue()))
+            sb_upsert("hbcc_templates", {"id":template_id, "name":clean_name,
+                      "template_type":"team_selection", "background_path":path,
+                      "settings":settings})
+            sb_upsert("hbcc_settings", {"key":"active_team_template", "value":{"id":template_id}})
+            st.session_state.team_active_template_id = template_id
+            st.session_state.team_editor_selection = template_id
+            st.session_state.graphic_settings = settings
+            st.session_state.graphic_settings_version = 3
+            if path:
+                st.session_state.graphic_template_bytes = sb_download(path)
+            else:
+                st.session_state.pop("graphic_template_bytes", None)
+            sb_refresh_templates()
+            st.success("Team template saved to Supabase and activated.")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Could not save team template: {exc}")
+    if selection != "__new__":
+        with st.expander("Delete this template", expanded=False):
+            if len(templates) <= 1:
+                st.info("Create another team template before deleting the last one.")
+            else:
+                st.warning("Deleting this template cannot be undone.")
+                confirmed = st.checkbox("I understand this template will be deleted", key=prefix+"_confirm")
+                if st.button("Delete template", disabled=not confirmed,
+                             key=prefix+"_delete", use_container_width=True):
+                    try:
+                        live = [t for t in sb_rows("hbcc_templates") if t.get("template_type") == "team_selection"]
+                        survivors = [t for t in live if t.get("id") != selection]
+                        if not survivors or not any(t.get("id") == selection for t in live):
+                            st.error("Cannot delete the last team template, or the template no longer exists.")
+                            return
+                        active_id = st.session_state.get("team_active_template_id", "team_default")
+                        fallback = next((t for t in survivors if t["id"] == active_id), survivors[0])
+                        sb_upsert("hbcc_settings", {"key":"active_team_template", "value":{"id":fallback["id"]}})
+                        sb_delete("hbcc_templates", "id", selection)
+                        old_path = record.get("background_path") or ""
+                        owned_path = "team-selection-templates/" + selection + ".png"
+                        if old_path == owned_path and not any(t.get("background_path") == old_path for t in survivors):
+                            try:
+                                sb_request("DELETE", "/storage/v1/object/hbcc-assets/" + quote(old_path, safe="/"))
+                            except Exception as exc:
+                                st.warning("Template deleted; old background cleanup failed: " + str(exc))
+                        st.session_state.team_active_template_id = fallback["id"]
+                        st.session_state.team_editor_selection = fallback["id"]
+                        st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **(fallback.get("settings") or {})}
+                        st.session_state.graphic_settings_version = 3
+                        if fallback.get("background_path"):
+                            st.session_state.graphic_template_bytes = sb_download(fallback["background_path"])
+                        else:
+                            st.session_state.pop("graphic_template_bytes", None)
+                        sb_refresh_templates()
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Could not delete team template: {exc}")
 
 
 def fixture_publisher(chosen):
