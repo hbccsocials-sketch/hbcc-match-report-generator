@@ -3405,10 +3405,13 @@ def results_render_pair(rows):
     if custom_bg:
         try:
             source = Image.open(io.BytesIO(custom_bg)).convert("RGB")
-            # Exclude the source template's baked-in MATCH RESULTS heading.
-            crop_start = int(source.height * 0.17)
-            source = source.crop((0, crop_start, source.width, source.height))
-            img = source.resize((w, h), Image.Resampling.LANCZOS)
+            # Preserve the background artwork's aspect ratio. Cropping away the
+            # old heading and then stretching the remaining image distorted
+            # sponsor logos and other artwork. Use proportional cover scaling
+            # instead, anchored toward the bottom to protect footer branding.
+            from PIL import ImageOps
+            img = ImageOps.fit(source, (w, h), method=Image.Resampling.LANCZOS,
+                               centering=(0.5, 1.0))
         except Exception:
             pass
     d = ImageDraw.Draw(img)
