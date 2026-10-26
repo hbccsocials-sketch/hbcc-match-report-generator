@@ -2154,9 +2154,104 @@ def fixture_admin():
     st.caption("No ZIP exports or extra Save buttons are required. Existing stored images are never deleted automatically.")
 
 
+def fixture_import_club_zip(uploaded_zip):
+    """One-time, repeat-safe migration from GitHub club_visuals ZIP to Supabase.
+
+    Import only when explicitly requested. Keep existing Supabase clubs/logos intact.
+    """
+    import zipfile
+    import hashlib
+    if not sb_ready():
+        raise RuntimeError("Connect Supabase in Streamlit Secrets before importing.")
+    payload = uploaded_zip.getvalue()
+    if len(payload) > 100 * 1024 * 1024:
+        raise ValueError("The ZIP exceeds the 100 MB migration limit.")
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        manifest_files = [x for x in archive.namelist() if Path(x).name == "clubs.json" and not x.startswith("__MACOSX/")]
+        if len(manifest_files) != 1:
+            raise ValueError("ZIP must contain exactly one clubs.json file.")
+        manifest_path = manifest_files[0]
+        prefix = manifest_path[:-len("clubs.json")]
+        records = json.loads(archive.read(manifest_path))
+        if not isinstance(records, list):
+            raise ValueError("clubs.json must contain a list of clubs.")
+        existing = sb_rows("hbcc_clubs")
+        by_name = {fixture_key(r.get("name")): r for r in existing}
+        by_id = {str(r.get("id")): r for r in existing}
+        imported, skipped, errors = 0, 0, []
+        for record in records:
+            try:
+                if not isinstance(record, dict) or not str(record.get("name", "")).strip():
+                    raise ValueError("Missing club name")
+                name = str(record["name"]).strip()
+                normalized = fixture_key(name)
+                if not normalized:
+                    raise ValueError("Invalid club name")
+                stable_id = "club_" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
+                previous = by_name.get(normalized) or by_id.get(stable_id)
+                if previous:
+                    # Preserve edits and logos already made in Supabase.
+                    skipped += 1
+                    continue
+                filename = Path(str(record.get("file") or "")).name
+                if not filename:
+                    raise ValueError("Missing logo filename")
+                matches = [prefix + filename, filename]
+                match = next((x for x in matches if x in archive.namelist()), None)
+                if match is None:
+                    raise ValueError("Logo not found in ZIP: " + filename)
+                if archive.getinfo(match).file_size > 12 * 1024 * 1024:
+                    raise ValueError("Logo exceeds 12 MB")
+                raw = archive.read(match)
+                normalized_png = sb_image(raw)
+                path = "club-logos/" + stable_id + ".png"
+                sb_upload(path, normalized_png)
+                cloud = {"id": stable_id, "name": name,
+                         "abbreviation": str(record.get("abbr") or ""),
+                         "aliases": record.get("aliases") if isinstance(record.get("aliases"), list) else [],
+                         "logo_path": path}
+                sb_upsert("hbcc_clubs", cloud)
+                by_name[normalized] = cloud
+                by_id[stable_id] = cloud
+                imported += 1
+            except Exception as exc:
+                errors.append(f"{record.get('name', 'Unnamed') if isinstance(record, dict) else 'Invalid club'}: {exc}")
+    # Refresh local catalog so the newly migrated Supabase logos are used now.
+    cloud_clubs = sb_rows("hbcc_clubs")
+    local = fixture_library()
+    for record in cloud_clubs:
+        cloud = {"id": record["id"], "name": record["name"],
+                 "abbr": record.get("abbreviation") or "",
+                 "aliases": record.get("aliases") or [],
+                 "logo_path": record.get("logo_path")}
+        idx = next((i for i, c in enumerate(local)
+                    if c.get("id") == cloud["id"] or fixture_key(c.get("name")) == fixture_key(cloud["name"])), None)
+        if idx is None:
+            local.append(cloud)
+        else:
+            local[idx].update(cloud)
+    st.session_state.sb_logo_cache = {}
+    return imported, skipped, errors
+
+
 def fixture_club_admin():
     st.markdown("#### Club visuals and aliases")
     st.caption("Edit existing clubs without uploading images again, or add a new club with a visual.")
+    with st.expander("Migrate GitHub club logos to Supabase (one-time)", expanded=False):
+        st.caption("Upload the club_visuals ZIP containing clubs.json and logo images. The importer uploads logos to the private hbcc-assets bucket and creates hbcc_clubs records. Existing Supabase club records are never overwritten. Safe to retry after a partial import.")
+        migration_zip = st.file_uploader("Club visuals ZIP", type=["zip"], key="fixture_club_migration_zip")
+        migration_confirm = st.checkbox("Import clubs and logos into Supabase", key="fixture_club_migration_confirm")
+        if st.button("Import to Supabase", key="fixture_club_migration_run", type="primary", disabled=not (migration_zip and migration_confirm)):
+            try:
+                with st.spinner("Importing club logos to Supabase..."):
+                    imported, skipped, errors = fixture_import_club_zip(migration_zip)
+                st.success(f"Migration complete: {imported} clubs imported, {skipped} already in Supabase.")
+                if errors:
+                    st.warning(f"{len(errors)} clubs could not be imported. You can retry safely.")
+                    st.code("\n".join(errors))
+                st.caption("Check Supabase Table Editor → hbcc_clubs and Storage → hbcc-assets → club-logos. The existing GitHub logos remain as a fallback.")
+            except Exception as exc:
+                st.error(f"Import failed: {exc}")
     clubs=fixture_library()
     if clubs:
         names=[f"{c.get('name','Unnamed')} · {c.get('abbr','')}" for c in clubs]
@@ -2236,7 +2331,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
