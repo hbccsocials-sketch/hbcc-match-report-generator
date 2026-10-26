@@ -1722,33 +1722,49 @@ def fixture_logo_bytes(entry):
 
 
 def fixture_team_identifiers(detail, team_name):
-    """Return explicit team identifiers only when a team object matches this name.
-
-    Never infer an identifier from a match ID, grade ID, or display position.
-    """
+    """Find real identifiers from matching PlayCricket team objects only."""
     wanted = fixture_key(team_name)
     if not wanted or not isinstance(detail, dict):
         return []
     found = set()
-    sources = [detail, detail.get("matchSummary"), detail.get("match")]
-    for source in sources:
-        if not isinstance(source, dict):
-            continue
-        for team in teams_of(source):
-            if fixture_key(name_of(team)) != wanted:
-                continue
-            for field in ("teamId", "clubTeamId", "id"):
-                value = team.get(field)
-                if isinstance(value, (str, int)) and str(value).strip():
-                    found.add("team:" + str(value).strip())
-            # Club IDs must be explicitly marked as club identifiers.
+    visited = set()
+    def visit(obj, depth=0):
+        if depth > 7 or id(obj) in visited:
+            return
+        visited.add(id(obj))
+        if isinstance(obj, list):
+            for item in obj[:80]:
+                visit(item, depth + 1)
+            return
+        if not isinstance(obj, dict):
+            return
+        # IDs are collected only from objects explicitly identifying this team.
+        candidate_names = [name_of(obj)]
+        for key in ("teamName", "displayName", "name"):
+            if isinstance(obj.get(key), str):
+                candidate_names.append(obj[key])
+        if any(fixture_key(n) == wanted for n in candidate_names if n):
+            for field in ("teamId", "clubTeamId"):
+                val = obj.get(field)
+                if isinstance(val, (str, int)) and str(val).strip():
+                    found.add("team:" + str(val).strip())
+            # 'id' is a team ID only on a team-shaped object.
+            if (obj.get("teamName") or obj.get("teamId") or obj.get("clubTeamId")
+                    or obj.get("players") is not None or obj.get("homeAway") is not None):
+                val = obj.get("id")
+                if isinstance(val, (str, int)) and str(val).strip():
+                    found.add("team:" + str(val).strip())
             for field in ("clubId", "organisationId", "organizationId"):
-                value = team.get(field)
-                if isinstance(value, (str, int)) and str(value).strip():
-                    found.add("club:" + str(value).strip())
-            club = team.get("club")
+                val = obj.get(field)
+                if isinstance(val, (str, int)) and str(val).strip():
+                    found.add("club:" + str(val).strip())
+            club = obj.get("club")
             if isinstance(club, dict) and club.get("id"):
                 found.add("club:" + str(club["id"]).strip())
+        for value in obj.values():
+            if isinstance(value, (dict, list)):
+                visit(value, depth + 1)
+    visit(detail)
     return sorted(found)
 
 
@@ -2649,8 +2665,17 @@ def fixture_publisher(chosen):
             except Exception:
                 detail_cache[mid] = {}
         detail = detail_cache.get(mid) or {}
-        row["home_ids"] = fixture_team_identifiers(detail, row.get("home_name"))
-        row["away_ids"] = fixture_team_identifiers(detail, row.get("away_name"))
+        original_names = fixture_split_teams(row)
+        for side, current_name in (("home", row.get("home_name")), ("away", row.get("away_name"))):
+            ids = fixture_team_identifiers(detail, current_name)
+            if not ids and current_name:
+                # A manually edited display name might differ from the API name.
+                # Only recover IDs if exactly one original API team name resolves.
+                matches = [fixture_team_identifiers(detail, n) for n in original_names]
+                matches = [m for m in matches if m]
+                if len(matches) == 1 and fixture_key(current_name) in [fixture_key(n) for n in original_names]:
+                    ids = matches[0]
+            row[side + "_ids"] = ids
 
     clubs = fixture_library()
     # Existing GitHub club entries might lack IDs. Create deterministic local IDs
@@ -2661,9 +2686,10 @@ def fixture_publisher(chosen):
     labels = {"": "Automatic matching"}
     labels.update({str(c["id"]): str(c.get("name", "Unnamed")) for c in clubs})
     with st.expander("Club logos — review matches and remember corrections", expanded=False):
-        st.caption("Uses PlayCricket club/team IDs where available, then names and aliases. Choose a logo to override a match; Save ID mapping remembers it for future fixtures.")
+        st.caption("Recognised clubs can be connected to PlayCricket IDs in one click. Corrections are remembered in Supabase.")
         if st.session_state.get("fixture_mapping_error"):
-            st.warning("ID mapping database is unavailable. Run the companion SQL setup before saving mappings. " + st.session_state.fixture_mapping_error)
+            st.warning("Mapping database unavailable: " + st.session_state.fixture_mapping_error)
+        candidates = []
         for row in rows:
             st.markdown(f"**{row.get('grade', 'Match')} — {row.get('home_name')} vs {row.get('away_name')}**")
             for side in ("home", "away"):
@@ -2676,16 +2702,48 @@ def fixture_publisher(chosen):
                     choices, format_func=lambda v: labels.get(v, v), key=key,
                 )
                 row[side + "_club_override"] = chosen_id or None
-                if chosen_id:
-                    st.caption("Source IDs: " + (", ".join(ids) if ids else "Not present in fixture details"))
+                chosen = fixture_club_by_id(chosen_id) if chosen_id else automatic
+                if ids:
+                    st.caption("PlayCricket IDs: " + ", ".join(ids))
+                    if chosen and method != "conflicting IDs":
+                        existing = fixture_id_mappings()
+                        if any(existing.get(i) != str(chosen["id"]) for i in ids):
+                            candidates.append((team, ids, chosen))
+                            st.caption("Ready to connect → " + str(chosen.get("name")))
+                        else:
+                            st.caption("Already connected to Supabase")
+                else:
+                    st.caption("No team/club identifier found in PlayCricket details. Logo can still match by name.")
+                if chosen_id and ids:
                     if st.button("Save ID mapping for " + team, key="save_map_" + str(row.get("id")) + side):
                         try:
                             fixture_save_mapping(ids, fixture_club_by_id(chosen_id))
-                            st.success("Mapping saved to Supabase for future fixtures")
+                            st.success("Mapping saved to Supabase")
                         except Exception as exc:
                             st.error(str(exc))
-                elif automatic:
-                    st.caption("Selected: " + str(automatic.get("name")) + " (" + method + ")")
+        if candidates:
+            st.markdown("**Connect recognised teams to Supabase**")
+            st.caption("Only teams with a real PlayCricket ID and a selected/matched club are included. Review the matches above first.")
+            if st.button("Save all reviewed ID connections", type="primary", key="fixture_bulk_save_ids"):
+                saved, failures = 0, []
+                for team, ids, club in candidates:
+                    try:
+                        # Do not silently overwrite a different existing club mapping.
+                        existing = fixture_id_mappings()
+                        conflicts = [i for i in ids if i in existing and existing[i] != str(club["id"])]
+                        if conflicts:
+                            failures.append(team + ": conflicting saved ID " + ", ".join(conflicts))
+                            continue
+                        fixture_save_mapping(ids, club)
+                        saved += 1
+                    except Exception as exc:
+                        failures.append(team + ": " + str(exc))
+                if saved:
+                    st.success(f"Saved {saved} team/club connections to Supabase. They will be reused on future fixtures.")
+                for error in failures:
+                    st.warning(error)
+        elif rows:
+            st.info("No new ID connections to save. Existing mappings are already saved, or PlayCricket did not provide team/club IDs.")
     missing=sorted({name for row in rows for name,ids,override in ((row.get("home_name"),row.get("home_ids"),row.get("home_club_override")),(row.get("away_name"),row.get("away_ids"),row.get("away_club_override"))) if not fixture_resolve_club(name,ids,override)[0]})
     if missing:
         st.warning(f"No matching logo for {len(missing)} team name(s): {', '.join(missing[:7])}{'…' if len(missing)>7 else ''}. Text abbreviations will be shown until you add visuals in Template Manager.")
