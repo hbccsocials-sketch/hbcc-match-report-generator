@@ -3239,7 +3239,7 @@ def results_scorecard_defaults(fixture):
             'grade': fixture.get('grade', ''),
             'venue': fixture.get('venue', ''),
             'date_label': fixture_pretty_dates(fixture.get('playing_dates') or [fixture.get('date', '')]),
-            'home_score': '', 'away_score': '', 'outcome': '',
+            'home_score': '', 'away_score': '', 'outcome': '', '_innings_count': 0,
             '_fixture_status': str(fixture.get('status') or ''), '_match_status': '',
             **{f'{kind}{i}_{field}': '' for kind in ('bat','ball') for i in (1,2) for field in ('name','figures')}}
     try:
@@ -3319,7 +3319,7 @@ def results_scorecard_defaults(fixture):
                         data[side+'_score']=total(container[key])
         # Collect innings where batting side can be identified. The bowling
         # figures on that innings are recorded for the OPPOSITION, not the batter's team.
-        bats=[];balls=[]; innings_seen=set()
+        bats=[];balls=[]; innings_seen=set(); innings_records=[]
         for obj in walk(detail):
             if not isinstance(obj,dict):continue
             batting=obj.get('batting')
@@ -3334,6 +3334,8 @@ def results_scorecard_defaults(fixture):
             # opposition bowling figures to HBCC.
             batting_known = bool(n or tid)
             innings_total=total(obj)
+            if batting_known and (innings_total or batting or bowling):
+                innings_records.append({'name': n, 'id': tid, 'total': innings_total, 'obj': obj})
             if innings_total and batting_known:
                 for side in ('home','away'):
                     target=data[side+'_name']
@@ -3345,7 +3347,7 @@ def results_scorecard_defaults(fixture):
                     pname=name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
                     try:runs=int(p.get('runsScored'))
                     except (TypeError,ValueError):continue
-                    if pname:bats.append((runs,pname,f"{runs} ({p.get('ballsFaced') if p.get('ballsFaced') is not None else '—'})"))
+                    if pname:bats.append((runs,pname,f"{runs} ({p.get('ballsFaced') if p.get('ballsFaced') is not None else '—'})", len(innings_records)-1))
             elif batting_known:
                 for p in bowling:
                     if not isinstance(p,dict):continue
@@ -3354,14 +3356,40 @@ def results_scorecard_defaults(fixture):
                     except (TypeError,ValueError):continue
                     if pname:
                         conceded=p.get('runsConceded')
-                        balls.append((wickets,-int(conceded or 0),pname,f"{wickets}/{conceded if conceded is not None else '—'}"))
-        for kind,entries in (('bat',sorted(bats,reverse=True)),('ball',sorted(balls,reverse=True))):
+                        balls.append((wickets,-int(conceded or 0),pname,f"{wickets}/{conceded if conceded is not None else '—'}", len(innings_records)-1))
+        # Multiple innings: show both team totals in batting order, not just
+        # the first total found in a match summary. Innings are chronological
+        # in the scorecard's innings list.
+        data['_innings_count'] = len(innings_records)
+        if len(innings_records) >= 3:
+            by_side = {'home': [], 'away': []}
+            for index, rec in enumerate(innings_records):
+                for side in ('home', 'away'):
+                    target = data[side + '_name']
+                    if norm(rec['name']) == norm(target) or (rec['id'] and any(norm(target) == norm(tn) and rec['id'] == team_id for tn,team_id in teams)):
+                        if rec['total']:
+                            by_side[side].append(rec['total'])
+                        break
+            for side in ('home','away'):
+                if by_side[side]:
+                    data[side+'_score'] = ' | '.join(by_side[side])
+        # Preserve the two strongest individual performances. For a match with
+        # 3+ innings label the team's innings (not the global innings number).
+        innings_numbers = {}
+        for index, rec in enumerate(innings_records):
+            key = rec['id'] or norm(rec['name'])
+            innings_numbers[key] = innings_numbers.get(key, 0) + 1
+            rec['team_innings'] = innings_numbers[key]
+        for kind,entries in (('bat',sorted(bats,key=lambda e:e[0],reverse=True)),
+                             ('ball',sorted(balls,key=lambda e:(e[0],e[1]),reverse=True))):
             seen=set();idx=0
             for entry in entries:
-                pname=entry[-2];figures=entry[-1]
+                pname,figures,inning_index=entry[-3:]
                 if pname.casefold() in seen:continue
                 seen.add(pname.casefold());idx+=1
                 if idx>2:break
+                if len(innings_records)>=3 and 0 <= inning_index < len(innings_records):
+                    figures += ' · Inn ' + str(innings_records[inning_index]['team_innings'])
                 data[f'{kind}{idx}_name']=pname
                 data[f'{kind}{idx}_figures']=figures
         data['_scorecard_loaded']=True
@@ -3384,6 +3412,12 @@ def draw_faded_navy_band(draw, x0, y0, x1, y1, base="#0c1b37", highlight="#243b6
         intensity = intensity*intensity*(3-2*intensity)
         color = tuple(round(dark[k] + (light[k]-dark[k])*intensity) for k in range(3))
         draw.line((int(x0+i), int(y0), int(x0+i), int(y1)), fill=color, width=1)
+
+
+def results_score_lines(value):
+    """Return display-ready innings totals, keeping multiple innings separate."""
+    parts = [part.strip() for part in str(value or '').split('|') if part.strip()]
+    return [results_wickets_first(part) for part in parts]
 
 
 def results_wickets_first(value):
@@ -3475,8 +3509,13 @@ def results_render_pair(rows):
             for j, line in enumerate(lines):
                 fixture_center(d, x, y0+j*line_h, line, font, "#ffffff")
         results_text(d, centre, top + 143, "VS", 45, 23, gold)
-        results_text(d, col_left, top + 194, results_wickets_first(row.get("home_score")), col_width, 54, gold)
-        results_text(d, col_right, top + 194, results_wickets_first(row.get("away_score")), col_width, 54, gold)
+        for x, raw_score in ((col_left, row.get("home_score")), (col_right, row.get("away_score"))):
+            scores = results_score_lines(raw_score)
+            if len(scores) > 1:
+                # Multiple innings share one score line; auto-fit within the team column.
+                results_text(d, x, top + 194, ' & '.join(scores), col_width, 54, gold)
+            else:
+                results_text(d, x, top + 194, scores[0] if scores else '', col_width, 54, gold)
         results_text(d, centre, top + 253, row.get("date_label") or "",
                      centre_right-centre_left-10, 27, gold)
         results_text(d, centre, top + 289, row.get("venue") or "",
@@ -3616,7 +3655,7 @@ def results_publisher(chosen):
             for fixture in missing:
                 store[str(fixture['id'])] = results_scorecard_defaults(fixture)
     st.caption(f'{len(chosen)} matches selected. Cancelled matches are excluded; washed-out or abandoned matches appear only when a score is recorded.')
-    st.caption('Each match has its own editable details and download. Missing scorecard fields stay blank rather than showing invented scores.')
+    st.caption('Edit each match below. For matches with 3+ innings, scores show both innings and player figures identify their innings.')
     images = []
     club_choices = results_club_choices()
     club_options = [""] + sorted(club_choices, key=lambda cid: str(club_choices[cid].get("name") or "").lower())
@@ -3635,10 +3674,10 @@ def results_publisher(chosen):
                 a,b = st.columns(2)
                 with a:
                     row['home_name'] = st.text_input('Team 1', value=row['home_name'], key='res_home_'+mid)
-                    row['home_score'] = st.text_input('Team 1 total score', value=row['home_score'], key='res_hscore_'+mid)
+                    row['home_score'] = st.text_input('Team 1 innings scores (separate with |)', value=row['home_score'], key='res_hscore_'+mid)
                 with b:
                     row['away_name'] = st.text_input('Team 2', value=row['away_name'], key='res_away_'+mid)
-                    row['away_score'] = st.text_input('Team 2 total score', value=row['away_score'], key='res_ascore_'+mid)
+                    row['away_score'] = st.text_input('Team 2 innings scores (separate with |)', value=row['away_score'], key='res_ascore_'+mid)
                 row['outcome'] = st.text_input('Match outcome', value=row['outcome'], key='res_outcome_'+mid)
                 row['grade'] = st.text_input('Grade', value=row['grade'], key='res_grade_'+mid)
                 row['date_label'] = st.text_input('Match date', value=row['date_label'], key='res_date_'+mid)
