@@ -1,0 +1,20 @@
+
+name: Supabase Activity Check
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          curl --fail --show-error \
+            "$SUPABASE_URL/rest/v1/heartbeat?select=id&limit=1" \
+            -H "apikey: $SUPABASE_KEY"
