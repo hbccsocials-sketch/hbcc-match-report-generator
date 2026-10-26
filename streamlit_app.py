@@ -1875,7 +1875,7 @@ def fixture_center(draw, x, y, text, font, fill):
 
 
 def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
-    """Paste a large, centre-cropped club visual, clipped to its fixture panel."""
+    """Contain the complete original club artwork inside its designated panel."""
     if not entry:
         return
     raw = fixture_logo_bytes(entry)
@@ -1883,25 +1883,21 @@ def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
         return
     try:
         logo = Image.open(io.BytesIO(raw)).convert("RGBA")
-        # Square club artworks contain their own colour/texture, so preserve the
-        # whole image and allow the outer edge to be cropped by the panel.
-        logo = logo.resize((int(size), int(size)), Image.Resampling.LANCZOS)
-        x, y = center
-        left = int(x - logo.width / 2)
-        upper = int(y - logo.height / 2)
-        if clip_box is None:
-            image.paste(logo, (left, upper), logo)
-            return
-        x0, y0, x1, y1 = map(int, clip_box)
-        crop_l = max(0, x0-left)
-        crop_t = max(0, y0-upper)
-        crop_r = min(logo.width, x1-left)
-        crop_b = min(logo.height, y1-upper)
-        if crop_r <= crop_l or crop_b <= crop_t:
-            return
-        part = logo.crop((crop_l, crop_t, crop_r, crop_b))
-        image.paste(part, (left+crop_l, upper+crop_t), part)
-    except (OSError, ValueError):
+        if clip_box is not None:
+            x0, y0, x1, y1 = map(int, clip_box)
+            # Keep the full image, including its corners, inside the gold frame.
+            available_w = max(1, x1 - x0 - 8)
+            available_h = max(1, y1 - y0 - 8)
+            factor = min(float(size) / logo.width, float(size) / logo.height,
+                         available_w / logo.width, available_h / logo.height)
+        else:
+            factor = min(float(size) / logo.width, float(size) / logo.height)
+        dimensions = (max(1, round(logo.width * factor)), max(1, round(logo.height * factor)))
+        logo = logo.resize(dimensions, Image.Resampling.LANCZOS)
+        left = round(center[0] - logo.width / 2)
+        upper = round(center[1] - logo.height / 2)
+        image.paste(logo, (left, upper), logo)
+    except (OSError, ValueError, ZeroDivisionError):
         return
 
 
@@ -2011,18 +2007,21 @@ def fixture_graphic(rows, settings):
         usable = panel_width - pad * 2
         # Grade strip is intentionally subtle and consistent on all three cards.
         strip_top = y + 9
-        strip_bottom = y + 46
+        strip_bottom = y + 51
         d.rectangle((panel_left + 2, strip_top, panel_right - 2, strip_bottom), fill="#192b49")
         grade = str(row.get("grade") or "MATCH").upper().strip()
         grade_font = fixture_text_fit(d, grade, usable - 18, 21, 13, True)
-        fixture_center(d, centre_x, strip_top + 6, grade, grade_font, yellow)
+        grade_bbox = d.textbbox((0, 0), grade, font=grade_font)
+        grade_height = grade_bbox[3] - grade_bbox[1]
+        grade_y = strip_top + ((strip_bottom - strip_top) - grade_height) / 2 - grade_bbox[1]
+        fixture_center(d, centre_x, grade_y, grade, grade_font, yellow)
 
         hab = fixture_abbrev(home, hc)
         aab = fixture_abbrev(away, ac)
         # Independent bounded columns keep long abbreviations clear of VS and panel edges.
         left_x, right_x = 421, 659
         abbrev_max_width = 178
-        team_y = y + 58
+        team_y = y + 64
         home_font = fixture_text_fit(d, hab, abbrev_max_width, 48, 18, True)
         away_font = fixture_text_fit(d, aab, abbrev_max_width, 48, 18, True)
         # Use the same point size on both teams for visual balance.
@@ -2034,25 +2033,37 @@ def fixture_graphic(rows, settings):
 
         dates = row.get("playing_dates") or [row.get("date", "")]
         date_str = fixture_pretty_dates(dates)
-        date_y = y + 120
+        date_y = y + 122
         date_font = fixture_text_fit(d, date_str, usable, 26, 15, True)
         fixture_center(d, centre_x, date_y, date_str, date_font, yellow)
 
         venue = str(row.get("venue") or "Venue TBC").strip()
-        venue_area_top = y + 161
-        venue_area_bottom = y + card_h - 13
-        available_h = max(24, venue_area_bottom - venue_area_top)
-        venue_font = fixture_font(20, False)
-        venue_lines = fixture_wrapped_lines(d, venue, usable, venue_font)
-        # Scale down until the full venue fits into two lines in the available area.
-        for size_pt in range(20, 11, -1):
-            venue_font = fixture_font(size_pt, False)
-            venue_lines = fixture_wrapped_lines(d, venue, usable, venue_font)
-            if len(venue_lines) <= 2 and all(d.textbbox((0, 0), line, font=venue_font)[2] <= usable for line in venue_lines) and len(venue_lines) * (size_pt + 5) <= available_h:
+        # Larger venue typography (25px vs 20px) and an increased date/venue gap.
+        # Fit dynamically inside the remaining card space, preserving all words.
+        date_bbox = d.textbbox((0, 0), date_str, font=date_font)
+        date_bottom = date_y + date_bbox[3]
+        venue_area_top = max(y + 163, date_bottom + 18)
+        venue_area_bottom = y + card_h - 12
+        available_h = max(16, venue_area_bottom - venue_area_top)
+        venue_font = fixture_font(25, False)
+        venue_lines = [venue]
+        for size_pt in range(25, 11, -1):
+            trial_font = fixture_font(size_pt, False)
+            trial_lines = fixture_wrapped_lines(d, venue, usable, trial_font, max_lines=99)
+            line_height = size_pt + 5
+            if (len(trial_lines) <= 2 and
+                    all(d.textbbox((0, 0), line, font=trial_font)[2] <= usable for line in trial_lines) and
+                    len(trial_lines) * line_height <= available_h):
+                venue_font, venue_lines = trial_font, trial_lines
                 break
-        line_height = getattr(venue_font, "size", 16) + 5
+        else:
+            # Very long names: retain the complete text, at a smaller font if needed.
+            venue_font = fixture_font(12, False)
+            venue_lines = fixture_wrapped_lines(d, venue, usable, venue_font, max_lines=99)
+        line_height = getattr(venue_font, "size", 12) + 5
         for line_no, line in enumerate(venue_lines):
-            fixture_center(d, centre_x, venue_area_top + line_no * line_height, line, venue_font, "#ffffff")
+            fixture_center(d, centre_x, venue_area_top + line_no * line_height,
+                           line, venue_font, "#ffffff")
         # Draw the outline last, above the artwork and label strips. This prevents
         # the square cropped visuals from covering the yellow left/right borders.
         d.rounded_rectangle((68,y,1012,y+card_h),radius=24,outline=yellow,width=4)
