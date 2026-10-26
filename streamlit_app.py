@@ -2547,7 +2547,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3152,21 +3152,21 @@ def results_render(row):
     results_text(d, w//2, 180, str(row.get("grade", "")).upper(), 850, 32, "#ffffff")
     d.rounded_rectangle((45, 255, 1035, 720), radius=26, fill="#0c1b37", outline=gold, width=5)
     left, right = 185, 895
-    for name, x, zone in ((row['home_name'], left, (52, 295, 305, 540)),
-                          (row['away_name'], right, (775, 295, 1028, 540))):
+    for name, x, zone in ((row.get('home_name') or 'TEAM 1', left, (52, 295, 305, 540)),
+                          (row.get('away_name') or 'TEAM 2', right, (775, 295, 1028, 540))):
         club, _ = fixture_resolve_club(name)
         fixture_logo_paste(img, club, (x, 417), size=int(140 * float(cfg["logo_scale"])), clip_box=zone)
     d = ImageDraw.Draw(img)
-    home_club, _ = fixture_resolve_club(row['home_name'])
-    away_club, _ = fixture_resolve_club(row['away_name'])
+    home_club, _ = fixture_resolve_club(row.get('home_name') or '')
+    away_club, _ = fixture_resolve_club(row.get('away_name') or '')
     outcome_y = int(cfg["outcome_top"])
     score_y = int(cfg["score_top"])
     performers_y = int(cfg["performers_top"])
     # Outcome banner makes results visually distinct from upcoming fixture cards.
     d.rounded_rectangle((330, outcome_y-9, 750, outcome_y+53), radius=13, fill="#263956")
     results_text(d, 540, outcome_y, row.get('outcome') or 'RESULT', 402, 32, gold)
-    home_label = str((home_club or {}).get('name') or row['home_name']).strip()
-    away_label = str((away_club or {}).get('name') or row['away_name']).strip()
+    home_label = str((home_club or {}).get('name') or row.get('home_name') or 'TEAM 1').strip()
+    away_label = str((away_club or {}).get('name') or row.get('away_name') or 'TEAM 2').strip()
     name_font, name_lines = fixture_equal_team_names(
         d, home_label, away_label, 196, max_size=27, min_size=12
     )
@@ -3205,8 +3205,9 @@ def results_score(innings):
 
 
 def results_scorecard_defaults(fixture):
-    data = {'home_name': fixture.get('home_name', ''),
-            'away_name': fixture.get('away_name', ''),
+    """Read match details defensively; never substitute venue for team names."""
+    data = {'home_name': fixture.get('home_name') or '',
+            'away_name': fixture.get('away_name') or '',
             'grade': fixture.get('grade', ''),
             'venue': fixture.get('venue', ''),
             'date_label': fixture_pretty_dates(fixture.get('playing_dates') or [fixture.get('date', '')]),
@@ -3215,48 +3216,97 @@ def results_scorecard_defaults(fixture):
     try:
         detail = match_detail(fixture['id'])
         summary = detail.get('matchSummary') or {}
-        if isinstance(summary, dict):
-            data['outcome'] = str(summary.get('resultText') or '')
-        teams = teams_of(summary) or teams_of(detail)
-        # Only assign scores when the team objects expose identifiable names.
-        for team in teams:
-            name = name_of(team.get('name') or team.get('teamName') or team.get('displayName'))
-            if not name:
-                continue
+        if not isinstance(summary, dict):
+            summary = {}
+        data['outcome'] = str(summary.get('resultText') or detail.get('resultText') or '')
+        home, away = fixture_home_away(fixture, detail)
+        if home and fixture_key(home) != fixture_key(data['venue']) and 'venue tbc' not in home.lower(): data['home_name'] = home
+        if away and fixture_key(away) != fixture_key(data['venue']) and 'venue tbc' not in away.lower(): data['away_name'] = away
+        # Fixture names are only used if they actually contain two identifiable teams.
+        if 'venue tbc' in data['home_name'].lower(): data['home_name'] = ''
+        if 'venue tbc' in data['away_name'].lower(): data['away_name'] = ''
+        if not data['home_name'] or not data['away_name']:
+            for obj in (summary, detail):
+                found = teams_of(obj)
+                if len(found) >= 2:
+                    names = [name_of(t) for t in found[:2]]
+                    if all(names):
+                        data['home_name'] = data['home_name'] or names[0]
+                        data['away_name'] = data['away_name'] or names[1]
+                        break
+        def walk(obj, depth=0):
+            if depth > 13: return
+            if isinstance(obj, dict):
+                yield obj
+                for value in obj.values():
+                    yield from walk(value, depth+1)
+            elif isinstance(obj, list):
+                for value in obj:
+                    yield from walk(value, depth+1)
+        def score(obj):
+            if not isinstance(obj, dict): return ''
+            for nested in ('total', 'score', 'inningsScore', 'scoreSummary'):
+                sub = obj.get(nested)
+                if isinstance(sub, dict):
+                    value = score(sub)
+                    if value: return value
+                elif isinstance(sub, str) and any(ch.isdigit() for ch in sub):
+                    return sub
+            runs = next((obj[k] for k in ('runsScored','totalRuns','runs','scoreRuns') if obj.get(k) is not None), None)
+            wickets = next((obj[k] for k in ('numberOfWicketsFallen','wicketsLost','wickets','totalWickets') if obj.get(k) is not None), None)
+            if runs is None or not str(runs).strip().lstrip('-').isdigit(): return ''
+            return str(runs) + ('/' + str(wickets) if wickets is not None else '')
+        # First use team-labelled score objects; don't assume innings order means home/away.
+        for obj in walk(detail):
+            if not isinstance(obj, dict): continue
+            team_name = name_of(obj.get('teamName') or obj.get('displayName') or obj.get('team') or obj.get('name'))
+            if not team_name: continue
             for side in ('home','away'):
-                if fixture_key(name) == fixture_key(data[side+'_name']):
-                    score = results_score(team)
-                    if score:
-                        data[side+'_score'] = score
-        innings = innings_summary(detail)
-        # Innings summaries can lack team identity; never guess which score
-        # belongs to which side. Batting/bowling performers are left editable
-        # unless they can be linked to HBCC via a named team object.
-        for team in teams:
-            name = name_of(team.get('name') or team.get('teamName') or team.get('displayName'))
-            if 'hawthorn boroondara' not in fixture_key(name) and 'hbcc' not in fixture_key(name):
-                continue
-            candidates = [team]
-            if isinstance(team.get('innings'), list):
-                candidates.extend(x for x in team['innings'] if isinstance(x, dict))
-            bats, balls = [], []
-            for candidate in candidates:
-                for player in candidate.get('batting', []) if isinstance(candidate.get('batting'), list) else []:
-                    if isinstance(player, dict):
-                        pname = name_of(player.get('playerShortName') or player.get('playerName') or player.get('player'))
-                        try: runs = int(player.get('runsScored'))
-                        except (ValueError, TypeError): continue
-                        if pname: bats.append((runs, pname, str(runs) + ' (' + str(player.get('ballsFaced') or '—') + ')'))
-                for player in candidate.get('bowling', []) if isinstance(candidate.get('bowling'), list) else []:
-                    if isinstance(player, dict):
-                        pname = name_of(player.get('playerShortName') or player.get('playerName') or player.get('player'))
-                        try: wkts = int(player.get('wicketsTaken'))
-                        except (ValueError, TypeError): continue
-                        if pname: balls.append((wkts, pname, str(wkts) + '/' + str(player.get('runsConceded') or '0')))
-            for kind, values in (('bat', sorted(bats, reverse=True)), ('ball', sorted(balls, reverse=True))):
-                for i, (_, name, figures) in enumerate(values[:2], 1):
-                    data[f'{kind}{i}_name'] = name
-                    data[f'{kind}{i}_figures'] = figures
+                target = data[side+'_name']
+                if target and fixture_key(team_name) == fixture_key(target):
+                    value = score(obj)
+                    if value and not data[side+'_score']:
+                        data[side+'_score'] = value
+        # If the summary has home/away team objects with score, use them directly.
+        for container in (summary, detail):
+            for side in ('home','away'):
+                for key in (side+'Team', side+'TeamSummary'):
+                    if isinstance(container.get(key), dict):
+                        value = score(container[key])
+                        if value and not data[side+'_score']: data[side+'_score'] = value
+        # Locate HBCC player records anywhere in the returned scorecard. Keep
+        # bowling/batting records from identifiable scorecard lists only.
+        hbcc_id = str(fixture.get('team_id') or '')
+        bats, balls = [], []
+        for obj in walk(detail):
+            if not isinstance(obj, dict): continue
+            team_name = name_of(obj.get('teamName') or obj.get('team') or obj.get('name'))
+            is_hbcc = ('hawthorn boroondara' in team_name.lower() or team_name.lower() == 'hbcc'
+                       or str(obj.get('teamId') or '') == hbcc_id and bool(hbcc_id))
+            if not is_hbcc: continue
+            for entry in walk(obj):
+                if not isinstance(entry, dict): continue
+                for p in entry.get('batting', []) if isinstance(entry.get('batting'), list) else []:
+                    if not isinstance(p, dict): continue
+                    pname = name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
+                    try: runs = int(p.get('runsScored'))
+                    except (ValueError, TypeError): continue
+                    if pname: bats.append((runs, pname, f"{runs} ({p.get('ballsFaced') or '—'})"))
+                for p in entry.get('bowling', []) if isinstance(entry.get('bowling'), list) else []:
+                    if not isinstance(p, dict): continue
+                    pname = name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
+                    try: wkts = int(p.get('wicketsTaken'))
+                    except (ValueError, TypeError): continue
+                    if pname: balls.append((wkts, pname, f"{wkts}/{p.get('runsConceded') or '0'}"))
+        for kind, entries in (('bat', bats), ('ball', balls)):
+            seen = set()
+            for _, pname, figures in sorted(entries, reverse=True):
+                if pname.lower() in seen: continue
+                seen.add(pname.lower())
+                idx = len(seen)
+                if idx > 2: break
+                data[f'{kind}{idx}_name'] = pname
+                data[f'{kind}{idx}_figures'] = figures
         data['_scorecard_loaded'] = True
     except Exception as error:
         data['_load_error'] = str(error)
@@ -3264,53 +3314,76 @@ def results_scorecard_defaults(fixture):
 
 
 def results_publisher(chosen):
-    st.caption('One 1080 × 1350 Instagram graphic per match · Supabase club logos · independent results templates')
+    st.caption('Generate one 1080 × 1350 result graphic for every selected match.')
     if not chosen:
-        st.info('Select at least one match in Review Fixtures.')
+        st.info('Select at least one completed match in Review Fixtures.')
         return
-    selected = st.selectbox('Match to create a result for', chosen,
-                            format_func=lambda f: f.get('grade','') + ' · ' + f.get('name',''),
-                            key='results_match_choice')
-    mid = selected['id']
     store = st.session_state.setdefault('results_editors', {})
-    if mid not in store:
-        with st.spinner('Reading PlayCricket scorecard...'):
-            store[mid] = results_scorecard_defaults(selected)
-    if st.button('Refresh from PlayCricket scorecard', key='results_refresh'):
-        store[mid] = results_scorecard_defaults(selected)
+    if st.button('Load / refresh all selected scorecards', key='results_refresh_all'):
+        with st.spinner('Reading PlayCricket scorecards...'):
+            for fixture in chosen:
+                store[str(fixture['id'])] = results_scorecard_defaults(fixture)
+                # Refresh any existing widget values too.
+                mid = str(fixture['id'])
+                for field, prefix in [('home_name','res_home_'),('away_name','res_away_'),('home_score','res_hscore_'),('away_score','res_ascore_'),('outcome','res_outcome_'),('grade','res_grade_'),('date_label','res_date_'),('venue','res_venue_')]:
+                    st.session_state[prefix+mid] = store[mid][field]
+                for kind in ('bat','ball'):
+                    for i in (1,2):
+                        st.session_state[f'res_{kind}{i}n_'+mid] = store[mid][f'{kind}{i}_name']
+                        st.session_state[f'res_{kind}{i}f_'+mid] = store[mid][f'{kind}{i}_figures']
         st.rerun()
-    row = store[mid]
-    if row.get('_load_error'):
-        st.warning('Scorecard could not be fully loaded. You can still enter results manually.')
-    st.info('Review all scores, match outcome and player figures before publishing. Unavailable details are left blank.')
-    with st.container(border=True):
-        st.markdown('#### Match details')
-        a, b = st.columns(2)
-        with a:
-            row['home_name'] = st.text_input('Team 1', value=row['home_name'], key='res_home_'+mid)
-            row['home_score'] = st.text_input('Team 1 total score', value=row['home_score'], placeholder='e.g. 8/214', key='res_hscore_'+mid)
-        with b:
-            row['away_name'] = st.text_input('Team 2', value=row['away_name'], key='res_away_'+mid)
-            row['away_score'] = st.text_input('Team 2 total score', value=row['away_score'], placeholder='e.g. 189', key='res_ascore_'+mid)
-        row['outcome'] = st.text_input('Match outcome', value=row['outcome'], placeholder='e.g. HBCC WON BY 25 RUNS', key='res_outcome_'+mid)
-        row['grade'] = st.text_input('Grade', value=row['grade'], key='res_grade_'+mid)
-        row['date_label'] = st.text_input('Match date', value=row['date_label'], key='res_date_'+mid)
-        row['venue'] = st.text_input('Venue', value=row['venue'], key='res_venue_'+mid)
-    with st.container(border=True):
-        st.markdown('#### HBCC best performers')
-        left, right = st.columns(2)
-        for kind, col, title, example in (('bat', left, 'With the bat', 'e.g. 74 (62)'), ('ball', right, 'With the ball', 'e.g. 3/24')):
-            with col:
-                st.markdown('**'+title+'**')
-                for i in (1, 2):
-                    row[f'{kind}{i}_name'] = st.text_input(f'Player {i} — {title.lower()}', value=row[f'{kind}{i}_name'], key=f'res_{kind}{i}n_'+mid)
-                    row[f'{kind}{i}_figures'] = st.text_input(f'Figures {i}', value=row[f'{kind}{i}_figures'], placeholder=example, key=f'res_{kind}{i}f_'+mid)
-    img = results_render(row)
-    st.markdown('#### Preview & download')
-    st.image(img, use_container_width=True)
-    st.download_button('Download result graphic (PNG)', graphic_png(img),
-                       'HBCC_Result_'+str(mid)[:8]+'.png', 'image/png',
-                       type='primary', use_container_width=True, key='result_download_'+mid)
+    missing = [f for f in chosen if str(f['id']) not in store]
+    if missing:
+        with st.spinner(f'Reading {len(missing)} PlayCricket scorecard(s)...'):
+            for fixture in missing:
+                store[str(fixture['id'])] = results_scorecard_defaults(fixture)
+    st.markdown(f'**{len(chosen)} match result graphics**')
+    st.caption('Each match has its own editable details and download. Missing scorecard fields stay blank rather than showing invented scores.')
+    images = []
+    for number, fixture in enumerate(chosen, 1):
+        mid = str(fixture['id'])
+        row = store[mid]
+        heading = f"{number}. {fixture.get('grade') or 'Match'} · {fixture.get('name') or mid[:8]}"
+        with st.expander(heading, expanded=(number == 1)):
+            if row.get('_load_error'):
+                st.warning('Could not fully load this scorecard: '+str(row['_load_error']))
+            with st.container(border=True):
+                st.markdown('**Match details**')
+                a,b = st.columns(2)
+                with a:
+                    row['home_name'] = st.text_input('Team 1', value=row['home_name'], key='res_home_'+mid)
+                    row['home_score'] = st.text_input('Team 1 total score', value=row['home_score'], key='res_hscore_'+mid)
+                with b:
+                    row['away_name'] = st.text_input('Team 2', value=row['away_name'], key='res_away_'+mid)
+                    row['away_score'] = st.text_input('Team 2 total score', value=row['away_score'], key='res_ascore_'+mid)
+                row['outcome'] = st.text_input('Match outcome', value=row['outcome'], key='res_outcome_'+mid)
+                row['grade'] = st.text_input('Grade', value=row['grade'], key='res_grade_'+mid)
+                row['date_label'] = st.text_input('Match date', value=row['date_label'], key='res_date_'+mid)
+                row['venue'] = st.text_input('Venue', value=row['venue'], key='res_venue_'+mid)
+            with st.container(border=True):
+                st.markdown('**HBCC performers**')
+                left,right = st.columns(2)
+                for kind, col, title in (('bat',left,'Batting'),('ball',right,'Bowling')):
+                    with col:
+                        st.markdown('**'+title+'**')
+                        for i in (1,2):
+                            row[f'{kind}{i}_name'] = st.text_input(f'Player {i} · {title}', value=row[f'{kind}{i}_name'], key=f'res_{kind}{i}n_'+mid)
+                            row[f'{kind}{i}_figures'] = st.text_input(f'Figures {i} · {title}', value=row[f'{kind}{i}_figures'], key=f'res_{kind}{i}f_'+mid)
+            img = results_render(row)
+            st.image(img, use_container_width=True)
+            st.download_button('Download this result (PNG)', graphic_png(img),
+                               'HBCC_Result_'+mid[:8]+'.png', 'image/png',
+                               key='result_download_'+mid, use_container_width=True)
+        images.append((mid, results_render(row)))
+    if images:
+        import zipfile
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for mid,img in images:
+                zf.writestr('HBCC_Result_'+mid[:8]+'.png', graphic_png(img))
+        st.download_button(f'Download all {len(images)} results (ZIP)', archive.getvalue(),
+                           'HBCC_Match_Results.zip', 'application/zip', type='primary',
+                           use_container_width=True, key='results_download_all')
 
 # ============================================================
 # ADVANCED SETTINGS
