@@ -2579,7 +2579,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3615,6 +3615,29 @@ def results_team_ids(fixture, row):
             for side in ("home", "away")}
 
 
+def results_swap_sides(match_id):
+    """Swap the two displayed teams and their scores before widgets render.
+
+    Player batting/bowling columns follow the HBCC team identity in the renderer.
+    """
+    store = st.session_state.setdefault('results_editors', {})
+    row = store.get(str(match_id))
+    if row is None:
+        return
+    for suffix in ('name', 'score', 'club_override', 'ids'):
+        a, b = 'home_' + suffix, 'away_' + suffix
+        row[a], row[b] = row.get(b), row.get(a)
+    key_a = 'results_logo_override_' + str(match_id) + '_home'
+    key_b = 'results_logo_override_' + str(match_id) + '_away'
+    if key_a in st.session_state or key_b in st.session_state:
+        st.session_state[key_a], st.session_state[key_b] = (
+            st.session_state.get(key_b, ''), st.session_state.get(key_a, ''))
+    # Explicitly synchronize visible team and score widgets with swapped values.
+    for field, prefix in (('home_name','res_home_'),('away_name','res_away_'),
+                          ('home_score','res_hscore_'),('away_score','res_ascore_')):
+        st.session_state[prefix + str(match_id)] = row.get(field) or ''
+
+
 def results_publisher(chosen):
     st.caption('Two match results per 1080 × 1350 graphic; an odd final match gets its own graphic.')
     with st.expander('Footer branding (optional)', expanded=False):
@@ -3669,6 +3692,9 @@ def results_publisher(chosen):
         with st.expander(heading, expanded=(number == 1)):
             if row.get('_load_error'):
                 st.warning('Could not fully load this scorecard: '+str(row['_load_error']))
+            st.caption('Team 1 appears on the left of the graphic; Team 2 appears on the right. Use Swap sides to reverse both teams, their innings scores and their logos. You can also edit either team name below.')
+            st.button('⇄ Swap home and away teams', key='results_swap_' + mid,
+                      on_click=results_swap_sides, args=(mid,))
             with st.container(border=True):
                 st.markdown('**Match details**')
                 a,b = st.columns(2)
