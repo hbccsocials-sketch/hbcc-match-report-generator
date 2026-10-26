@@ -3208,12 +3208,18 @@ def results_scorecard_defaults(fixture):
             'venue': fixture.get('venue', ''),
             'date_label': fixture_pretty_dates(fixture.get('playing_dates') or [fixture.get('date', '')]),
             'home_score': '', 'away_score': '', 'outcome': '',
+            '_fixture_status': str(fixture.get('status') or ''), '_match_status': '',
             **{f'{kind}{i}_{field}': '' for kind in ('bat','ball') for i in (1,2) for field in ('name','figures')}}
     try:
         detail = match_detail(fixture['id'])
         summary = detail.get('matchSummary') or {}
         if not isinstance(summary,dict): summary={}
         data['outcome'] = str(summary.get('resultText') or detail.get('resultText') or '')
+        data['_match_status'] = ' | '.join(str(x) for x in (
+            summary.get('status'), summary.get('matchStatus'), summary.get('matchState'),
+            detail.get('status'), detail.get('matchStatus'), detail.get('matchState'),
+            summary.get('resultType'), detail.get('resultType')
+        ) if x is not None)
         home,away = fixture_home_away(fixture,detail)
         if home and 'venue tbc' not in home.lower(): data['home_name']=home
         if away and 'venue tbc' not in away.lower(): data['away_name']=away
@@ -3430,14 +3436,32 @@ def results_render_pair(rows):
     return img
 
 
-def results_is_publishable(row):
-    """Show any match with at least one recorded total, including washouts.
+def results_is_cancelled(row, fixture=None):
+    """Cancellation overrides score presence; washouts/abandonments do not.
 
-    Never infer that a washout or abandonment has no score: a partially
-    completed match is still useful for the club's results graphic.
+    Read both fixture status and scorecard status/result. Do not classify
+    abandoned, no-result or washed-out matches as cancelled.
     """
-    for key in ("home_score", "away_score"):
-        value = str(row.get(key) or "").strip()
+    fields = [row.get('_fixture_status'), row.get('_match_status'),
+              row.get('outcome')]
+    if fixture:
+        fields.extend((fixture.get('status'), fixture.get('matchStatus'),
+                       fixture.get('resultText')))
+    for value in fields:
+        label = str(value or '').strip().lower()
+        if re.search(r"\b(cancelled|canceled|cancellation|match cancelled|match canceled)\b", label):
+            # Avoid treating an explicit negation as a cancellation.
+            if not re.search(r"\b(not|never)\s+(?:been\s+)?cancelled\b", label):
+                return True
+    return False
+
+
+def results_is_publishable(row, fixture=None):
+    """Exclude cancelled games even if a score exists; include scored washouts."""
+    if results_is_cancelled(row, fixture):
+        return False
+    for key in ('home_score', 'away_score'):
+        value = str(row.get(key) or '').strip()
         if re.search(r"\d", value) and not re.fullmatch(r"[-–—]+", value):
             return True
     return False
@@ -3489,7 +3513,7 @@ def results_publisher(chosen):
         with st.spinner(f'Reading {len(missing)} PlayCricket scorecard(s)...'):
             for fixture in missing:
                 store[str(fixture['id'])] = results_scorecard_defaults(fixture)
-    st.caption(f'{len(chosen)} matches selected. Any match with a recorded score is included, even if washed out or abandoned.')
+    st.caption(f'{len(chosen)} matches selected. Cancelled matches are excluded; washed-out or abandoned matches appear only when a score is recorded.')
     st.caption('Each match has its own editable details and download. Missing scorecard fields stay blank rather than showing invented scores.')
     images = []
     club_choices = results_club_choices()
@@ -3564,11 +3588,12 @@ def results_publisher(chosen):
                     elif not ids:
                         st.caption("No verified PlayCricket team ID was provided. Your logo selection applies to this graphic; it cannot be saved by ID.")
             st.caption('This match will appear in the combined graphic preview below if a score is recorded.')
-    # Re-evaluate after edits. Even washed-out matches are included if scored.
-    publishable = [f for f in chosen if results_is_publishable(store[str(f['id'])])]
-    skipped = len(chosen) - len(publishable)
-    if skipped:
-        st.info(f"Skipped {skipped} match{'es' if skipped != 1 else ''} without any recorded scores.")
+    # Re-evaluate after edits. Cancelled games are never published.
+    publishable = [f for f in chosen if results_is_publishable(store[str(f['id'])], f)]
+    cancelled_count = sum(results_is_cancelled(store[str(f['id'])], f) for f in chosen)
+    unscored_count = len(chosen) - len(publishable) - cancelled_count
+    if cancelled_count or unscored_count:
+        st.info(f'Excluded {cancelled_count} cancelled match(es) and {unscored_count} match(es) without scores.')
     # Alert on missing logos for matches that will actually be published.
     missing_logos = []
     for fixture in publishable:
