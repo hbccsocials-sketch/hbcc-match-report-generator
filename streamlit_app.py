@@ -46,8 +46,29 @@ def sb_rows(table):
 
 
 def sb_upsert(table, record):
-    return sb_request("POST", "/rest/v1/" + table, json_data=record,
-                      content_type="application/json", params={"on_conflict": "id" if table != "hbcc_settings" else "key"})
+    # PostgREST requires Prefer: resolution=merge-duplicates for true UPSERT.
+    # on_conflict alone still performs INSERT and raises 23505 on existing IDs.
+    if not sb_ready():
+        raise RuntimeError("Supabase secrets are missing in Streamlit Cloud")
+    root = str(st.secrets["SUPABASE_URL"]).rstrip("/")
+    key = str(st.secrets["SUPABASE_SECRET_KEY"])
+    headers = {
+        "apikey": key,
+        "Authorization": "Bearer " + key,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+    conflict_column = "key" if table == "hbcc_settings" else "id"
+    response = requests.post(
+        root + "/rest/v1/" + table,
+        headers=headers,
+        params={"on_conflict": conflict_column},
+        json=record,
+        timeout=35,
+    )
+    if not response.ok:
+        raise RuntimeError(f"Supabase {response.status_code}: {response.text[:350]}")
+    return response
 
 
 def sb_delete(table, field, value):
@@ -1986,7 +2007,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
