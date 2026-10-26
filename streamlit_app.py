@@ -3357,22 +3357,61 @@ def results_scorecard_defaults(fixture):
                     if pname:
                         conceded=p.get('runsConceded')
                         balls.append((wickets,-int(conceded or 0),pname,f"{wickets}/{conceded if conceded is not None else '—'}", len(innings_records)-1))
-        # Multiple innings: show both team totals in batting order, not just
-        # the first total found in a match summary. Innings are chronological
-        # in the scorecard's innings list.
-        data['_innings_count'] = len(innings_records)
-        if len(innings_records) >= 3:
-            by_side = {'home': [], 'away': []}
-            for index, rec in enumerate(innings_records):
-                for side in ('home', 'away'):
-                    target = data[side + '_name']
-                    if norm(rec['name']) == norm(target) or (rec['id'] and any(norm(target) == norm(tn) and rec['id'] == team_id for tn,team_id in teams)):
-                        if rec['total']:
-                            by_side[side].append(rec['total'])
-                        break
-            for side in ('home','away'):
-                if by_side[side]:
-                    data[side+'_score'] = ' | '.join(by_side[side])
+        # Collect innings from the actual scorecard, including innings which
+        # have totals but omit one of the batting/bowling arrays (common with
+        # unfinished second innings). Do not mistake match-level totals for
+        # individual innings.
+        def match_side(name, tid):
+            nkey = norm(name)
+            for side in ('home', 'away'):
+                target = norm(data[side + '_name'])
+                if nkey and target and (nkey == target or nkey in target or target in nkey):
+                    return side
+                if tid and any(tid == t_id and (norm(tn) == target or norm(tn) in target or target in norm(tn)) for tn,t_id in teams):
+                    return side
+            return None
+
+        # Prioritise explicitly ordered innings lists; nested scorecard entries
+        # are the fallback. Each innings should only appear once.
+        candidates = []
+        def collect_innings(obj, parent_key=''):
+            if isinstance(obj, dict):
+                n, tid = team_info(obj)
+                score = total(obj)
+                is_innings = (isinstance(obj.get('batting'), list) or
+                              isinstance(obj.get('bowling'), list) or
+                              any(k in obj for k in ('inningsNumber', 'inningsNo', 'inningsOrder', 'inningsId')) or
+                              'inning' in parent_key.lower())
+                if is_innings and score and match_side(n, tid):
+                    candidates.append((n, tid, score, obj))
+                for k, v in obj.items():
+                    if isinstance(v, (dict, list)):
+                        collect_innings(v, str(k))
+            elif isinstance(obj, list):
+                for child in obj:
+                    collect_innings(child, parent_key)
+        collect_innings(detail)
+        by_side = {'home': [], 'away': []}
+        fingerprints = {'home': set(), 'away': set()}
+        for name, tid, score, obj in candidates:
+            side = match_side(name, tid)
+            if not side: continue
+            inning_no = next((str(obj[k]) for k in ('inningsNumber','inningsNo','inningsOrder','inningsId') if obj.get(k) is not None), '')
+            # Same score appearing inside nested score summaries is not a new innings.
+            fingerprint = (inning_no, score) if inning_no else ('score', score)
+            if fingerprint not in fingerprints[side]:
+                fingerprints[side].add(fingerprint)
+                by_side[side].append(score)
+        # Backfill from the innings with both batting and bowling lists.
+        for rec in innings_records:
+            side = match_side(rec['name'], rec['id'])
+            if side and rec['total'] and rec['total'] not in by_side[side]:
+                by_side[side].append(rec['total'])
+        data['_innings_count'] = max(len(innings_records), sum(len(x) for x in by_side.values()))
+        for side in ('home','away'):
+            if by_side[side]:
+                data[side+'_score'] = ' | '.join(by_side[side])
+        data['_innings_found'] = {side: len(scores) for side,scores in by_side.items()}
         # Preserve the two strongest individual performances. For a match with
         # 3+ innings label the team's innings (not the global innings number).
         innings_numbers = {}
@@ -3388,7 +3427,7 @@ def results_scorecard_defaults(fixture):
                 if pname.casefold() in seen:continue
                 seen.add(pname.casefold());idx+=1
                 if idx>2:break
-                if len(innings_records)>=3 and 0 <= inning_index < len(innings_records):
+                if data['_innings_count']>=3 and 0 <= inning_index < len(innings_records):
                     figures += ' · Inn ' + str(innings_records[inning_index]['team_innings'])
                 data[f'{kind}{idx}_name']=pname
                 data[f'{kind}{idx}_figures']=figures
@@ -3501,14 +3540,17 @@ def results_render_pair(rows):
 
         hname = str((home_club or {}).get("name") or row.get("home_name") or "TEAM 1")
         aname = str((away_club or {}).get("name") or row.get("away_name") or "TEAM 2")
-        font, names = fixture_equal_team_names(d, hname, aname, col_width,
+        # Always reserve a genuine two-line name area, with the VS in its
+        # own centre gutter (rather than crowding a long club name).
+        name_width = min(col_width - 14, (centre_right - centre_left) * 0.425)
+        font, names = fixture_equal_team_names(d, hname, aname, name_width,
                                                 max_size=32, min_size=18)
         line_h = font.size + 4
         for x, lines in zip((col_left, col_right), names):
-            y0 = top + 111 + (2-len(lines))*line_h/2
+            y0 = top + 105 + (2-len(lines))*line_h/2
             for j, line in enumerate(lines):
                 fixture_center(d, x, y0+j*line_h, line, font, "#ffffff")
-        results_text(d, centre, top + 143, "VS", 45, 23, gold)
+        results_text(d, centre, top + 135, "VS", 38, 21, gold)
         for x, raw_score in ((col_left, row.get("home_score")), (col_right, row.get("away_score"))):
             scores = results_score_lines(raw_score)
             if len(scores) > 1:
@@ -3692,6 +3734,8 @@ def results_publisher(chosen):
         with st.expander(heading, expanded=(number == 1)):
             if row.get('_load_error'):
                 st.warning('Could not fully load this scorecard: '+str(row['_load_error']))
+            if row.get('_innings_found') and sum(row['_innings_found'].values()) < 3:
+                st.caption('Only the innings available in the PlayCricket scorecard were detected. If another innings is missing, enter it in the team score field separated by |, for example 180/10 | 95/4.')
             st.caption('Team 1 appears on the left of the graphic; Team 2 appears on the right. Use Swap sides to reverse both teams, their innings scores and their logos. You can also edit either team name below.')
             st.button('⇄ Swap home and away teams', key='results_swap_' + mid,
                       on_click=results_swap_sides, args=(mid,))
