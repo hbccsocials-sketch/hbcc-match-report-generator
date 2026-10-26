@@ -78,8 +78,16 @@ def sb_delete(table, field, value):
 def sb_upload(path, content):
     # Private bucket: only this server-side secret can upload/download.
     endpoint = "/storage/v1/object/hbcc-assets/" + quote(path, safe="/")
-    sb_request("POST", endpoint, data=content, content_type="image/png",
-               params={"upsert": "true"})
+    if not sb_ready():
+        raise RuntimeError("Supabase secrets are missing")
+    root = str(st.secrets["SUPABASE_URL"]).rstrip("/")
+    key = str(st.secrets["SUPABASE_SECRET_KEY"])
+    response = requests.post(root + endpoint, data=content, headers={
+        "apikey": key, "Authorization": "Bearer " + key,
+        "Content-Type": "image/png", "x-upsert": "true",
+    }, timeout=35)
+    if not response.ok:
+        raise RuntimeError(f"Supabase Storage {response.status_code}: {response.text[:350]}")
     return path
 
 
@@ -111,20 +119,40 @@ def sb_save_club(club, image_bytes=None):
 
 
 def sb_save_template(kind, name, image_bytes, settings):
+    """Persist template metadata without creating duplicate background objects.
+
+    Existing random-named images remain untouched until the user actually
+    changes the background. A replacement is written to one stable path per
+    template, so repeated saves do not accumulate orphaned files.
+    """
     if kind not in ("fixture", "team_selection"):
         raise ValueError("Unknown template type")
     template_id = ("fixture_" if kind == "fixture" else "team_") + re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
     if not template_id.strip("_"):
         raise ValueError("Enter a template name")
-    previous = next((t for t in st.session_state.get("sb_templates", []) if t["id"] == template_id), None)
-    path = previous.get("background_path") if previous else None
-    if image_bytes:
-        path = kind.replace("_", "-") + "-templates/" + uuid.uuid4().hex + ".png"
-        sb_upload(path, sb_image(image_bytes))
-    sb_upsert("hbcc_templates", {"id": template_id, "name": name,
-              "template_type": kind, "background_path": path, "settings": dict(settings)})
-    sb_refresh_templates()
 
+    # Fetch the authoritative saved record; session state may be stale.
+    matches = sb_request("GET", "/rest/v1/hbcc_templates", params={
+        "id": "eq." + template_id, "select": "id,background_path"
+    }).json()
+    previous = matches[0] if matches else None
+    previous_path = previous.get("background_path") if previous else None
+    path = previous_path
+
+    if image_bytes is not None:
+        normalized = sb_image(image_bytes)
+        # Compare with the existing stored image. Settings-only saves do not
+        # upload another PNG, even if the uploader still holds the same image.
+        existing_bytes = sb_download(previous_path) if previous_path else None
+        if existing_bytes != normalized:
+            path = kind.replace("_", "-") + "-templates/" + template_id + ".png"
+            # POST with x-upsert:true replaces a file at the same path.
+            sb_upload(path, normalized)
+
+    sb_upsert("hbcc_templates", {"id": template_id, "name": name,
+              "template_type": kind, "background_path": path,
+              "settings": dict(settings)})
+    sb_refresh_templates()
 
 def sb_refresh_templates():
     st.session_state.sb_templates = sb_rows("hbcc_templates")
@@ -1835,7 +1863,7 @@ def fixture_admin():
     uploaded = st.file_uploader("Blank fixture background (PNG/JPG)", type=["png", "jpg", "jpeg"], key="global_fixture_background")
     if uploaded is not None and st.session_state.get("fixture_background_upload_hash") != (uploaded.name, len(uploaded.getvalue()), hash(uploaded.getvalue())):
         try:
-            st.session_state.fixture_background_upload_hash=(uploaded.name,len(uploaded.getvalue()))
+            st.session_state.fixture_background_upload_hash=(uploaded.name,len(uploaded.getvalue()),hash(uploaded.getvalue()))
             im = Image.open(io.BytesIO(uploaded.getvalue()))
             im.verify()
             st.session_state.fixture_background_bytes = uploaded.getvalue()
@@ -1917,7 +1945,7 @@ def fixture_admin():
                 st.success("Fixture background and layout saved permanently.")
             except Exception as exc:
                 st.error(f"Could not save: {exc}")
-        st.caption("The active template is loaded automatically whenever Content Studio starts.")
+        st.caption("Saving settings does not duplicate the background. A replacement background uses one stable file per template. Older uploaded files are left untouched for safe manual cleanup.")
     else:
         st.warning("Add SUPABASE_URL and SUPABASE_SECRET_KEY to Streamlit Secrets to enable permanent saving.")
 
