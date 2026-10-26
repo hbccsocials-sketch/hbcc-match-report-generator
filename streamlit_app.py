@@ -1255,21 +1255,40 @@ def image_asset():
     return Image.new("RGB", (580, 725), "#0f192d")
 
 
-def font_asset(size):
-    uploaded = st.session_state.get("graphic_font_bytes")
+# Broadcast font system shared by every generated graphic.
+# These files live beside streamlit_app.py in the GitHub repository.
+BROADCAST_BOLD_FONT = Path(__file__).resolve().parent / "RobotoCondensed-Bold.ttf"
+BROADCAST_BODY_FONT = Path(__file__).resolve().parent / "ITC Franklin Gothic LT Medium.otf"
+
+
+def broadcast_font(size, bold=False):
+    """Roboto Condensed for display text; Franklin Gothic for supporting text.
+
+    Keep existing installations functional if the new Roboto file is absent.
+    """
+    paths = ([BROADCAST_BOLD_FONT, BROADCAST_BODY_FONT] if bold else
+             [BROADCAST_BODY_FONT, BROADCAST_BOLD_FONT])
+    paths += [Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') if bold
+              else Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')]
+    for path in paths:
+        if path.is_file():
+            try:
+                return ImageFont.truetype(str(path), int(size))
+            except (OSError, ValueError):
+                continue
+    return ImageFont.load_default()
+
+
+def font_asset(size, bold=False):
+    # A font uploaded in the Team Selection template manager still takes
+    # precedence for that template; all others use the shared broadcast fonts.
+    uploaded = st.session_state.get('graphic_font_bytes')
     if uploaded:
         try:
-            return ImageFont.truetype(io.BytesIO(uploaded), size=size)
+            return ImageFont.truetype(io.BytesIO(uploaded), size=int(size))
         except (OSError, ValueError):
             pass
-    if DEFAULT_FONT.exists():
-        return ImageFont.truetype(str(DEFAULT_FONT), size=size)
-    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "arial.ttf"):
-        try:
-            return ImageFont.truetype(path, size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+    return broadcast_font(size, bold)
 
 
 def graphic_opponent(row):
@@ -1330,8 +1349,8 @@ def render_team_graphic(row, settings=None):
 
     title_size = int(cfg["title_size"])
     detail_size = int(cfg["details_size"])
-    title_font = font_asset(title_size)
-    detail_font = font_asset(detail_size)
+    title_font = font_asset(title_size, bold=True)
+    detail_font = font_asset(detail_size, bold=False)
     write_lines(str(row.get("grade", "")).upper(), title_font, yellow,
                 round(title_size * yellow_spacing), stroke)
     for line in (
@@ -1867,14 +1886,7 @@ def fixture_abbrev(name, club=None):
 
 
 def fixture_font(size, bold=False):
-    paths = [Path(__file__).resolve().parent / "ITC Franklin Gothic LT Medium.otf", Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf") if bold else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")]
-    for path in paths:
-        if path.exists():
-            try:
-                return ImageFont.truetype(str(path), int(size))
-            except OSError:
-                pass
-    return ImageFont.load_default()
+    return broadcast_font(size, bold)
 
 
 def fixture_text_fit(draw, text, max_width, max_size, min_size=18, bold=False):
@@ -2547,7 +2559,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -4906,7 +4918,7 @@ else:
                 )
                 if not DEFAULT_TEMPLATE.exists() and not st.session_state.get("graphic_template_bytes"):
                     st.warning("Template missing: add hbcc_team_template.png beside streamlit_app.py or upload one in Template Manager.")
-                if not DEFAULT_FONT.exists() and not st.session_state.get("graphic_font_bytes"):
+                if not BROADCAST_BODY_FONT.exists() and not st.session_state.get("graphic_font_bytes"):
                     st.warning("Club font missing: add your licensed ITC Franklin Gothic LT Medium.otf beside streamlit_app.py or upload it in Template Manager.")
                 graphic_rows = card_rows
                 if graphic_rows:
