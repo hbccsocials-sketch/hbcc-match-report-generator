@@ -2547,7 +2547,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3364,8 +3364,8 @@ def results_render_pair(rows):
         left_end, right_start = left + side_width, right - side_width
         d.rounded_rectangle((left, top, right, bottom), radius=22,
                             fill="#0c1b37", outline=gold, width=4)
-        home_club, _ = fixture_resolve_club(row.get("home_name") or "")
-        away_club, _ = fixture_resolve_club(row.get("away_name") or "")
+        home_club, _ = fixture_resolve_club(row.get("home_name") or "", row.get("home_ids"), row.get("home_club_override"))
+        away_club, _ = fixture_resolve_club(row.get("away_name") or "", row.get("away_ids"), row.get("away_club_override"))
         # Fill each entire outer sixth vertically. Crop horizontal overflow,
         # but never stretch the club artwork or cover the centre details.
         fixture_logo_paste(img, home_club, ((left + left_end)//2, (top + bottom)//2),
@@ -3430,6 +3430,41 @@ def results_render_pair(rows):
     return img
 
 
+def results_is_publishable(row):
+    """Show any match with at least one recorded total, including washouts.
+
+    Never infer that a washout or abandonment has no score: a partially
+    completed match is still useful for the club's results graphic.
+    """
+    for key in ("home_score", "away_score"):
+        value = str(row.get(key) or "").strip()
+        if re.search(r"\d", value) and not re.fullmatch(r"[-–—]+", value):
+            return True
+    return False
+
+
+def results_club_choices():
+    """Return all Supabase-backed club visuals available to the fixture tool."""
+    clubs = fixture_library()
+    for club in clubs:
+        club.setdefault("id", "club_" + fixture_key(club.get("name")))
+    return {str(club["id"]): club for club in clubs}
+
+
+def results_team_ids(fixture, row):
+    """Extract verified team/club IDs from the same PlayCricket match detail."""
+    mid = str(fixture.get("id") or "")
+    cache = st.session_state.setdefault("fixture_logo_detail_cache", {})
+    if mid not in cache:
+        try:
+            cache[mid] = match_detail(mid)
+        except Exception:
+            cache[mid] = {}
+    detail = cache.get(mid) or {}
+    return {side: fixture_team_identifiers(detail, row.get(side + "_name") or "")
+            for side in ("home", "away")}
+
+
 def results_publisher(chosen):
     st.caption('Two match results per 1080 × 1350 graphic; an odd final match gets its own graphic.')
     if not chosen:
@@ -3454,9 +3489,14 @@ def results_publisher(chosen):
         with st.spinner(f'Reading {len(missing)} PlayCricket scorecard(s)...'):
             for fixture in missing:
                 store[str(fixture['id'])] = results_scorecard_defaults(fixture)
-    st.markdown(f'**{len(chosen)} matches · {(len(chosen)+1)//2} graphics**')
+    st.caption(f'{len(chosen)} matches selected. Any match with a recorded score is included, even if washed out or abandoned.')
     st.caption('Each match has its own editable details and download. Missing scorecard fields stay blank rather than showing invented scores.')
     images = []
+    club_choices = results_club_choices()
+    club_options = [""] + sorted(club_choices, key=lambda cid: str(club_choices[cid].get("name") or "").lower())
+    club_labels = {"": "Use automatic club matching"}
+    club_labels.update({cid: str(club.get("name") or cid) for cid, club in club_choices.items()})
+    unmatched = []
     for number, fixture in enumerate(chosen, 1):
         mid = str(fixture['id'])
         row = store[mid]
@@ -3486,11 +3526,74 @@ def results_publisher(chosen):
                         for i in (1,2):
                             row[f'{kind}{i}_name'] = st.text_input(f'Player {i} · {title}', value=row[f'{kind}{i}_name'], key=f'res_{kind}{i}n_'+mid)
                             row[f'{kind}{i}_figures'] = st.text_input(f'Figures {i} · {title}', value=row[f'{kind}{i}_figures'], key=f'res_{kind}{i}f_'+mid)
-            st.caption('This match will appear in the combined graphic preview below.')
+            # Review logo assignments here, without requiring a separate trip
+            # to Upcoming Fixtures. Only valid PlayCricket IDs can be saved.
+            team_ids = results_team_ids(fixture, row)
+            with st.expander("Club logos — check and assign", expanded=False):
+                st.caption("Choose a saved Supabase club logo if the automatic match is missing or incorrect. Save a detected team ID to remember the choice.")
+                for side in ("home", "away"):
+                    team_name = str(row.get(side + "_name") or "").strip()
+                    ids = team_ids.get(side, [])
+                    automatic, method = fixture_resolve_club(team_name, ids)
+                    override_key = "results_logo_override_" + mid + "_" + side
+                    selected = st.selectbox(
+                        ("Team 1" if side == "home" else "Team 2") + " · " + (team_name or "Unknown team"),
+                        club_options, key=override_key,
+                        format_func=lambda cid: club_labels.get(cid, cid),
+                    )
+                    club = club_choices.get(selected) if selected else automatic
+                    row[side + "_club_override"] = selected or None
+                    if club and fixture_logo_bytes(club):
+                        st.caption("Logo: " + str(club.get("name")) + " · " + ("manual selection" if selected else method))
+                    else:
+                        st.warning("No club logo assigned for " + (team_name or "this team") + ". Select a club above, or add its logo in Admin Mode → Club Visuals & Aliases.")
+                    if ids and club:
+                        st.caption("Detected ID(s): " + ", ".join(ids))
+                        if st.button("Save logo mapping for " + (team_name or side), key="results_save_logo_" + mid + "_" + side):
+                            existing = fixture_id_mappings()
+                            conflicts = [identifier for identifier in ids
+                                         if identifier in existing and existing[identifier] != str(club.get("id"))]
+                            if conflicts:
+                                st.error("An ID is already connected to another club: " + ", ".join(conflicts) + ". Remove the old mapping in Admin Mode first.")
+                            else:
+                                try:
+                                    fixture_save_mapping(ids, club, team_name)
+                                    st.success("Club logo mapping saved to Supabase.")
+                                except Exception as exc:
+                                    st.error("Could not save club mapping: " + str(exc))
+                    elif not ids:
+                        st.caption("No verified PlayCricket team ID was provided. Your logo selection applies to this graphic; it cannot be saved by ID.")
+            st.caption('This match will appear in the combined graphic preview below if a score is recorded.')
+    # Re-evaluate after edits. Even washed-out matches are included if scored.
+    publishable = [f for f in chosen if results_is_publishable(store[str(f['id'])])]
+    skipped = len(chosen) - len(publishable)
+    if skipped:
+        st.info(f"Skipped {skipped} match{'es' if skipped != 1 else ''} without any recorded scores.")
+    # Alert on missing logos for matches that will actually be published.
+    missing_logos = []
+    for fixture in publishable:
+        row = store[str(fixture['id'])]
+        ids = results_team_ids(fixture, row)
+        for side in ('home', 'away'):
+            override = row.get(side + '_club_override')
+            club, _ = fixture_resolve_club(row.get(side + '_name'), ids.get(side), override)
+            if not club or not fixture_logo_bytes(club):
+                missing_logos.append(str(row.get(side + '_name') or 'Unknown team'))
+    if missing_logos:
+        st.warning('Missing club logo for: ' + ', '.join(sorted(set(missing_logos))) + '. Expand the match editor → Club logos — check and assign to select the correct club.')
+    if not publishable:
+        st.warning('No completed matches with recorded scores to export yet.')
+        return
+    st.markdown(f"**{len(publishable)} results · {(len(publishable)+1)//2} graphics ready**")
     # Build combined graphics only after all editors have updated their rows.
-    for offset in range(0, len(chosen), 2):
-        batch = chosen[offset:offset+2]
-        rows = [store[str(f["id"])] for f in batch]
+    for offset in range(0, len(publishable), 2):
+        batch = publishable[offset:offset+2]
+        rows = []
+        for fixture in batch:
+            result_row = store[str(fixture["id"])]
+            result_row.update({side + "_ids": results_team_ids(fixture, result_row).get(side, [])
+                               for side in ("home", "away")})
+            rows.append(result_row)
         graphic = results_render_pair(rows)
         graphic_num = offset // 2 + 1
         label = f"Graphic {graphic_num} · {len(batch)} match{'es' if len(batch)>1 else ''}"
