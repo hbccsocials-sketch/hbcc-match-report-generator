@@ -1798,6 +1798,7 @@ def fixture_save_mapping(identifiers, club):
     for identifier in identifiers:
         sb_upsert("hbcc_club_mappings", {
             "source_id": identifier, "club_id": str(club["id"]),
+            "source_type": identifier.split(":", 1)[0],
         })
         fixture_id_mappings()[identifier] = str(club["id"])
 
@@ -2234,6 +2235,65 @@ def fixture_import_club_zip(uploaded_zip):
     return imported, skipped, errors
 
 
+def fixture_club_mapping_admin(club):
+    """Manage PlayCricket identifiers linked to the selected Supabase club."""
+    st.markdown("##### Connected PlayCricket IDs")
+    st.caption("One club can have multiple team IDs. Club IDs cover multiple grades when PlayCricket exposes them. These links choose the club's single saved logo.")
+    if not sb_ready():
+        st.info("Connect Supabase to manage saved mappings.")
+        return
+    if not club.get("id"):
+        st.info("Save this club to Supabase before linking team IDs.")
+        return
+    try:
+        mappings = sb_rows("hbcc_club_mappings")
+    except Exception as exc:
+        st.error("Could not load mappings: " + str(exc))
+        return
+    own = sorted((r for r in mappings if str(r.get("club_id")) == str(club["id"])), key=lambda r: str(r.get("source_id", "")))
+    if own:
+        for record in own:
+            source = str(record.get("source_id", ""))
+            kind = str(record.get("source_type") or source.split(":", 1)[0]).title()
+            source_name = record.get("source_name") or "No team name recorded"
+            left, right = st.columns([5, 1])
+            left.markdown(f"**{kind}** · `{source}`  \n{source_name}")
+            if right.button("Remove", key="club_mapping_remove_" + str(club["id"]) + "_" + source):
+                try:
+                    sb_delete("hbcc_club_mappings", "source_id", source)
+                    st.session_state.pop("fixture_id_mappings", None)
+                    st.success("Mapping removed")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("Could not remove mapping: " + str(exc))
+    else:
+        st.caption("No IDs connected to this club yet. You can add one below or save a correction from Upcoming Fixtures.")
+    with st.form("club_mapping_add_" + str(club["id"])):
+        id_type = st.selectbox("Identifier type", ["team", "club"], key="mapping_type_" + str(club["id"]))
+        raw_id = st.text_input("PlayCricket ID", placeholder="Paste the ID only, without team: or club:")
+        source_name = st.text_input("Team / source name (optional)")
+        if st.form_submit_button("Connect ID to this club"):
+            clean_id = raw_id.strip()
+            if clean_id.lower().startswith(("team:", "club:")):
+                prefix, clean_id = clean_id.split(":", 1)
+                id_type = prefix.lower()
+            if not clean_id:
+                st.error("Enter an ID first.")
+            else:
+                source_id = id_type + ":" + clean_id
+                other = next((r for r in mappings if str(r.get("source_id")) == source_id and str(r.get("club_id")) != str(club["id"])), None)
+                if other:
+                    st.error("This ID is already linked to a different club. Remove its existing mapping before reassigning it.")
+                else:
+                    try:
+                        sb_upsert("hbcc_club_mappings", {"source_id": source_id, "source_type": id_type, "source_name": source_name.strip(), "club_id": str(club["id"])})
+                        st.session_state.pop("fixture_id_mappings", None)
+                        st.success("ID linked to this club")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error("Could not save mapping: " + str(exc) + ". Check that the SQL migration has been run.")
+
+
 def fixture_club_admin():
     st.markdown("#### Club visuals and aliases")
     st.caption("Edit existing clubs without uploading images again, or add a new club with a visual.")
@@ -2285,6 +2345,7 @@ def fixture_club_admin():
                             st.error(f"Cloud save failed: {exc}")
                     else:
                         st.warning("Saved only for this session: Supabase not connected")
+        fixture_club_mapping_admin(club)
         raw=fixture_logo_bytes(club)
         if raw: st.image(raw,width=140)
         if st.button("Delete this club",key="delete_club_global"):
