@@ -2154,7 +2154,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2205,7 +2205,8 @@ def team_template_admin():
         return
     by_id = {t["id"]: t for t in templates}
     options = list(by_id) + ["__new__"]
-    current = st.session_state.get("team_editor_selection", "team_default")
+    pending = st.session_state.pop("team_editor_pending_selection", None)
+    current = pending or st.session_state.get("team_editor_selection", "team_default")
     if current not in options:
         current = options[0] if templates else "__new__"
     st.session_state.team_editor_selection = current
@@ -2265,7 +2266,7 @@ def team_template_admin():
                       "settings":settings})
             sb_upsert("hbcc_settings", {"key":"active_team_template", "value":{"id":template_id}})
             st.session_state.team_active_template_id = template_id
-            st.session_state.team_editor_selection = template_id
+            st.session_state.team_editor_pending_selection = template_id
             st.session_state.graphic_settings = settings
             st.session_state.graphic_settings_version = 3
             if path:
@@ -2304,7 +2305,7 @@ def team_template_admin():
                             except Exception as exc:
                                 st.warning("Template deleted; old background cleanup failed: " + str(exc))
                         st.session_state.team_active_template_id = fallback["id"]
-                        st.session_state.team_editor_selection = fallback["id"]
+                        st.session_state.team_editor_pending_selection = fallback["id"]
                         st.session_state.graphic_settings = {**DEFAULT_GRAPHIC_SETTINGS, **(fallback.get("settings") or {})}
                         st.session_state.graphic_settings_version = 3
                         if fallback.get("background_path"):
