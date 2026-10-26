@@ -2071,7 +2071,7 @@ def fixture_graphic(rows, settings):
         # Grade strip is intentionally subtle and consistent on all three cards.
         strip_top = y + 9
         strip_bottom = y + 51
-        d.rectangle((panel_left + 2, strip_top, panel_right - 2, strip_bottom), fill="#192b49")
+        draw_faded_navy_band(d, panel_left + 2, strip_top, panel_right - 2, strip_bottom, highlight="#243b60")
         grade = str(row.get("grade") or "MATCH").upper().strip()
         grade_font = fixture_text_fit(d, grade, usable - 18, 21, 13, True)
         grade_bbox = d.textbbox((0, 0), grade, font=grade_font)
@@ -3364,6 +3364,22 @@ def results_scorecard_defaults(fixture):
     return data
 
 
+def draw_faded_navy_band(draw, x0, y0, x1, y1, base="#0c1b37", highlight="#243b60", fade_fraction=0.23):
+    """Draw a light navy centre band that smoothly blends into the card navy."""
+    def rgb(h):
+        h = h.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    dark, light = rgb(base), rgb(highlight)
+    width = max(1, int(x1-x0))
+    fade = max(1, int(width * fade_fraction))
+    for i in range(width):
+        intensity = min(1.0, i/fade, (width-1-i)/fade)
+        intensity = max(0.0, intensity)
+        intensity = intensity*intensity*(3-2*intensity)
+        color = tuple(round(dark[k] + (light[k]-dark[k])*intensity) for k in range(3))
+        draw.line((int(x0+i), int(y0), int(x0+i), int(y1)), fill=color, width=1)
+
+
 def results_render_pair(rows):
     """Two results per portrait. Logos occupy full-height outer sixths;
     batting figures always sit beneath HBCC's score, bowling beneath the opponent.
@@ -3429,6 +3445,10 @@ def results_render_pair(rows):
         col_right = centre_left + (centre_right-centre_left)*0.74
         col_width = (centre_right-centre_left)*0.44
 
+        # Matching broadcast-style light navy banner, with soft horizontal
+        # fades on both ends. Includes grade AND result/outcome.
+        draw_faded_navy_band(d, centre_left, top + 6, centre_right, top + 97,
+                             highlight="#243b60")
         results_text(d, centre, top + 12, str(row.get("grade") or "").upper(),
                      centre_right-centre_left-20, 28, gold)
         outcome = str(row.get("outcome") or "").strip()
