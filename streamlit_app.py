@@ -2061,7 +2061,7 @@ def fixture_graphic(rows, settings):
                 fixture_wrapped_lines(d, home_label, label_width, label_font, max_lines=2),
                 fixture_wrapped_lines(d, away_label, label_width, label_font, max_lines=2),
             )
-        name_y = y + 108
+        name_y = y + 117  # Extra breathing room below team abbreviations
         name_line_height = getattr(label_font, "size", 11) + 3
         for name_x, lines in zip((left_x, right_x), label_lines):
             for line_no, line in enumerate(lines):
@@ -2070,7 +2070,7 @@ def fixture_graphic(rows, settings):
 
         dates = row.get("playing_dates") or [row.get("date", "")]
         date_str = fixture_pretty_dates(dates)
-        date_y = y + 151
+        date_y = y + 159  # Preserve spacing below two-line club names
         date_font = fixture_text_fit(d, date_str, usable, 26, 15, True)
         fixture_center(d, centre_x, date_y, date_str, date_font, yellow)
 
@@ -2542,7 +2542,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
