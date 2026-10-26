@@ -2573,7 +2573,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3380,101 +3380,100 @@ def draw_faded_navy_band(draw, x0, y0, x1, y1, base="#0c1b37", highlight="#243b6
         draw.line((int(x0+i), int(y0), int(x0+i), int(y1)), fill=color, width=1)
 
 
+def results_wickets_first(value):
+    """Display wickets/runs, retaining any overs annotation unchanged."""
+    raw = str(value or "").strip()
+    match = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)(.*)", raw)
+    if not match:
+        return raw or "—"
+    runs, wickets, suffix = match.groups()
+    return f"{wickets}/{runs}{suffix}"
+
+
 def results_render_pair(rows):
-    """Two results per portrait. Logos occupy full-height outer sixths;
-    batting figures always sit beneath HBCC's score, bowling beneath the opponent.
-    """
+    """Mobile-first paired results, with a clean sponsor-ready footer."""
     w, h = FIXTURE_SIZE
     cfg = {**RESULTS_DEFAULT_SETTINGS, **st.session_state.get("results_graphic_settings", {})}
     gold = cfg["gold"]
-    img = Image.new("RGB", (w, h), "#0d1b35")
+    img = Image.new("RGB", (w, h), "#101b33")
     d = ImageDraw.Draw(img)
     for yy in range(h):
         t = yy / h
-        a, b = (155, 9, 33), (14, 24, 47)
+        a, b = (133, 10, 34), (13, 24, 47)
         d.line((0, yy, w, yy), fill=tuple(int(a[k]*(1-t)+b[k]*t) for k in range(3)))
     custom_bg = st.session_state.get("results_background_bytes")
     if custom_bg:
         try:
-            img = Image.open(io.BytesIO(custom_bg)).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+            source = Image.open(io.BytesIO(custom_bg)).convert("RGB")
+            # Exclude the source template's baked-in MATCH RESULTS heading.
+            crop_start = int(source.height * 0.17)
+            source = source.crop((0, crop_start, source.width, source.height))
+            img = source.resize((w, h), Image.Resampling.LANCZOS)
         except Exception:
             pass
     d = ImageDraw.Draw(img)
-    if not custom_bg:
-        results_text(d, 540, 36, "MATCH RESULTS", 960, 79, gold)
 
+    # Cards begin near the top, leaving 250px below for club/sponsor branding.
     for idx, row in enumerate(rows[:2]):
-        top = 155 + idx * 575
-        bottom = top + 548
-        left, right = 35, 1045
-        panel_width = right - left
-        side_width = round(panel_width / 6)  # one sixth for each logo
+        top = 20 + idx * 540
+        bottom = top + 520
+        left, right = 24, 1056
+        side_width = round((right - left) / 6)
         left_end, right_start = left + side_width, right - side_width
         d.rounded_rectangle((left, top, right, bottom), radius=22,
                             fill="#0c1b37", outline=gold, width=4)
         home_club, _ = fixture_resolve_club(row.get("home_name") or "", row.get("home_ids"), row.get("home_club_override"))
         away_club, _ = fixture_resolve_club(row.get("away_name") or "", row.get("away_ids"), row.get("away_club_override"))
-        # Fill each entire outer sixth vertically. Crop horizontal overflow,
-        # but never stretch the club artwork or cover the centre details.
         fixture_logo_paste(img, home_club, ((left + left_end)//2, (top + bottom)//2),
                            clip_box=(left+4, top+4, left_end, bottom-4))
         fixture_logo_paste(img, away_club, ((right_start + right)//2, (top + bottom)//2),
                            clip_box=(right_start, top+4, right-4, bottom-4))
-        # Soft horizontal transition from both full-height logo panels into
-        # the solid navy scoreboard. Keep the outside edges and logo height intact.
-        fade_width = 82
-        navy = (12, 27, 55)  # same as the card's #0c1b37 centre
+        navy = (12, 27, 55)
+        fade_width = 88
         for edge, direction in ((left_end, 1), (right_start, -1)):
             for step in range(fade_width):
-                # 0 at the outer side of the fade; 1 at the inner side.
                 progress = step / max(1, fade_width - 1)
                 x = edge - fade_width + step if direction == 1 else edge + step
                 opacity = progress if direction == 1 else 1.0 - progress
-                # Smoothstep removes hard visible edges in the blend.
                 opacity = opacity * opacity * (3 - 2 * opacity)
                 overlay = Image.new("RGB", (1, bottom - top - 8), navy)
                 mask = Image.new("L", overlay.size, round(opacity * 255))
                 img.paste(overlay, (int(x), top + 4), mask)
         d = ImageDraw.Draw(img)
-        # Restore the frame on top of the images.
-        d.rounded_rectangle((left, top, right, bottom), radius=22,
-                            outline=gold, width=4)
-        centre_left, centre_right = left_end + 7, right_start - 7
+        d.rounded_rectangle((left, top, right, bottom), radius=22, outline=gold, width=4)
+        centre_left, centre_right = left_end + 8, right_start - 8
         centre = (centre_left + centre_right) / 2
         col_left = centre_left + (centre_right-centre_left)*0.26
         col_right = centre_left + (centre_right-centre_left)*0.74
-        col_width = (centre_right-centre_left)*0.44
+        col_width = (centre_right-centre_left)*0.46
 
-        # Matching broadcast-style light navy banner, with soft horizontal
-        # fades on both ends. Includes grade AND result/outcome.
-        draw_faded_navy_band(d, centre_left, top + 6, centre_right, top + 97,
+        draw_faded_navy_band(d, centre_left, top + 5, centre_right, top + 96,
                              highlight="#243b60")
-        results_text(d, centre, top + 12, str(row.get("grade") or "").upper(),
-                     centre_right-centre_left-20, 28, gold)
+        results_text(d, centre, top + 9, str(row.get("grade") or "").upper(),
+                     centre_right-centre_left-12, 36, gold)
         outcome = str(row.get("outcome") or "").strip()
         if outcome:
-            results_text(d, centre, top + 53, outcome,
-                         centre_right-centre_left-25, 22, "#ffffff")
+            results_text(d, centre, top + 54, outcome,
+                         centre_right-centre_left-15, 26, "#ffffff")
+
         hname = str((home_club or {}).get("name") or row.get("home_name") or "TEAM 1")
         aname = str((away_club or {}).get("name") or row.get("away_name") or "TEAM 2")
         font, names = fixture_equal_team_names(d, hname, aname, col_width,
-                                                max_size=27, min_size=14)
-        line_h = font.size + 5
+                                                max_size=32, min_size=18)
+        line_h = font.size + 4
         for x, lines in zip((col_left, col_right), names):
-            y0 = top + 110 + (2-len(lines))*line_h/2
+            y0 = top + 111 + (2-len(lines))*line_h/2
             for j, line in enumerate(lines):
                 fixture_center(d, x, y0+j*line_h, line, font, "#ffffff")
-        results_text(d, centre, top + 137, "VS", 35, 19, gold)
-        results_text(d, col_left, top + 188, row.get("home_score") or "—", col_width, 44, gold)
-        results_text(d, col_right, top + 188, row.get("away_score") or "—", col_width, 44, gold)
-        results_text(d, centre, top + 243, row.get("date_label") or "",
-                     centre_right-centre_left-18, 22, gold)
-        results_text(d, centre, top + 275, row.get("venue") or "",
-                     centre_right-centre_left-18, 20, "#ffffff", False)
-        d.line((centre_left+12, top+314, centre_right-12, top+314), fill="#40516d", width=2)
+        results_text(d, centre, top + 143, "VS", 45, 23, gold)
+        results_text(d, col_left, top + 194, results_wickets_first(row.get("home_score")), col_width, 54, gold)
+        results_text(d, col_right, top + 194, results_wickets_first(row.get("away_score")), col_width, 54, gold)
+        results_text(d, centre, top + 253, row.get("date_label") or "",
+                     centre_right-centre_left-10, 27, gold)
+        results_text(d, centre, top + 289, row.get("venue") or "",
+                     centre_right-centre_left-10, 24, "#ffffff", False)
+        d.line((centre_left+8, top+330, centre_right-8, top+330), fill="#40516d", width=2)
 
-        # HBCC is not always home/team 1. Anchor batting to HBCC's column,
-        # bowling to the other side, independent of match order.
         def hbcc_team(value):
             key = re.sub(r"[^a-z0-9]", "", str(value or "").lower())
             return "hawthornboroondara" in key or key == "hbcc"
@@ -3485,15 +3484,33 @@ def results_render_pair(rows):
         elif away_hbcc and not home_hbcc:
             bat_x, ball_x = col_right, col_left
         else:
-            # No safe side identification: retain conventional ordering.
             bat_x, ball_x = col_left, col_right
         for kind, x in (("bat", bat_x), ("ball", ball_x)):
             for n in (1, 2):
-                y = top + 331 + (n-1)*92
-                pname = row.get(f"{kind}{n}_name") or "—"
-                figures = row.get(f"{kind}{n}_figures") or ""
-                results_text(d, x, y, pname, col_width, 25, "#ffffff")
-                results_text(d, x, y + 33, figures, col_width, 24, gold)
+                y = top + 356 + (n-1)*70
+                pname = str(row.get(f"{kind}{n}_name") or "").strip()
+                figures = str(row.get(f"{kind}{n}_figures") or "").strip()
+                if not pname and not figures:
+                    continue
+                # Single-line stat row gives larger, more legible type on phones.
+                combined = f"{pname}  {figures}".strip()
+                results_text(d, x, y, combined, col_width, 29, "#ffffff")
+
+    # Optional assets sit in the reserved footer, not on top of match information.
+    footer_top = 1110
+    def footer_asset(data, box):
+        if not data:
+            return
+        try:
+            asset = Image.open(io.BytesIO(data)).convert("RGBA")
+            asset.thumbnail((box[2]-box[0], box[3]-box[1]), Image.Resampling.LANCZOS)
+            x = box[0] + ((box[2]-box[0])-asset.width)//2
+            y = box[1] + ((box[3]-box[1])-asset.height)//2
+            img.paste(asset, (x, y), asset)
+        except Exception:
+            pass
+    footer_asset(st.session_state.get("results_footer_club_logo"), (65, footer_top, 505, 1320))
+    footer_asset(st.session_state.get("results_footer_sponsor_logo"), (575, footer_top, 1015, 1320))
     return img
 
 
@@ -3552,6 +3569,21 @@ def results_team_ids(fixture, row):
 
 def results_publisher(chosen):
     st.caption('Two match results per 1080 × 1350 graphic; an odd final match gets its own graphic.')
+    with st.expander('Footer branding (optional)', expanded=False):
+        st.caption('The heading is removed. Add a club logo and sponsor logo in the reserved bottom section; transparent PNGs work best.')
+        footer_left, footer_right = st.columns(2)
+        with footer_left:
+            club_file = st.file_uploader('Footer club logo', type=['png', 'jpg', 'jpeg', 'webp'], key='results_footer_club_upload')
+            if club_file is not None:
+                st.session_state['results_footer_club_logo'] = club_file.getvalue()
+        with footer_right:
+            sponsor_file = st.file_uploader('Footer sponsor logo', type=['png', 'jpg', 'jpeg', 'webp'], key='results_footer_sponsor_upload')
+            if sponsor_file is not None:
+                st.session_state['results_footer_sponsor_logo'] = sponsor_file.getvalue()
+        if st.button('Clear footer logos', key='results_clear_footer'):
+            st.session_state.pop('results_footer_club_logo', None)
+            st.session_state.pop('results_footer_sponsor_logo', None)
+            st.rerun()
     if not chosen:
         st.info('Select at least one completed match in Review Fixtures.')
         return
