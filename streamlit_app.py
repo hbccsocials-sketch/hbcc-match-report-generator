@@ -1790,23 +1790,20 @@ def fixture_graphic(rows, settings):
         d=ImageDraw.Draw(background)
         # Semi-opaque centre provides guaranteed legibility, even with vivid club art.
         d.rectangle((305,y+5,775,y+card_h-5),fill="#0c1b37")
-        # Club names at the bottom of each side, abbreviated in the centre.
+        # Club names sit directly beneath their abbreviations in the central
+        # text area. Never overlay club names on top of the logo artwork.
         hname=str(hc.get("name") if hc else home)
         aname=str(ac.get("name") if ac else away)
-        label_font=fixture_font(17,True)
-        d.rectangle((73,y+card_h-35,304,y+card_h-5),fill="#09152c")
-        d.rectangle((776,y+card_h-35,1007,y+card_h-5),fill="#09152c")
-        fixture_center(d,188,y+card_h-30,hname,fixture_text_fit(d,hname,222,17,11,True),"#ffffff")
-        fixture_center(d,892,y+card_h-30,aname,fixture_text_fit(d,aname,222,17,11,True),"#ffffff")
         hab=fixture_abbrev(home,hc); aab=fixture_abbrev(away,ac)
-        fixture_center(d,405,y+24,hab,fixture_text_fit(d,hab,155,57,28,True),"#ffffff")
-        fixture_center(d,675,y+24,aab,fixture_text_fit(d,aab,155,57,28,True),"#ffffff")
+        fixture_center(d,405,y+20,hab,fixture_text_fit(d,hab,155,57,28,True),"#ffffff")
+        fixture_center(d,675,y+20,aab,fixture_text_fit(d,aab,155,57,28,True),"#ffffff")
         fixture_center(d,540,y+34,"VS",fixture_font(27,True),yellow)
+        fixture_center(d,405,y+83,hname,fixture_text_fit(d,hname,205,17,10,False),"#ffffff")
+        fixture_center(d,675,y+83,aname,fixture_text_fit(d,aname,205,17,10,False),"#ffffff")
         date_str=" & ".join(row.get("playing_dates") or [row.get("date","")])
-        # Responsive vertical spacing: all details must remain inside the card.
         details=[date_str,str(row.get("venue") or "Venue TBC"),str(row.get("grade") or "")]
-        base=y+min(108,max(82,card_h*0.42))
-        step=min(33,max(25,(card_h-140)//3))
+        base=y+min(140,max(116,card_h*0.48))
+        step=min(33,max(25,(card_h-160)//3))
         for j,line in enumerate(details):
             font=fixture_text_fit(d,line,448,25 if j==0 else 21,14,j==0)
             fixture_center(d,540,base+j*step,line,font,yellow if j==0 else "#ffffff")
