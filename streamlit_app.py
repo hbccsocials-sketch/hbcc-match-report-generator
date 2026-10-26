@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import re
 import time
+from functools import lru_cache
 from datetime import date, datetime, timedelta, timezone
 
 import requests
@@ -36,13 +37,15 @@ def sb_request(method, endpoint, *, json_data=None, data=None, content_type=None
     if content_type:
         headers["Content-Type"] = content_type
     response = requests.request(method, root + endpoint, headers=headers,
-                                json=json_data, data=data, params=params, timeout=35)
+                                json=json_data, data=data, params=params, timeout=(5, 18) if method == "GET" else 35)
     if not response.ok:
         raise RuntimeError(f"Supabase {response.status_code}: {response.text[:350]}")
     return response
 
 
+@st.cache_data(ttl=180, max_entries=12, show_spinner=False)
 def sb_rows(table):
+    """Short-lived shared cache for read-only Supabase table metadata."""
     return sb_request("GET", "/rest/v1/" + table, params={"select": "*"}).json()
 
 
@@ -69,11 +72,13 @@ def sb_upsert(table, record):
     )
     if not response.ok:
         raise RuntimeError(f"Supabase {response.status_code}: {response.text[:350]}")
+    sb_rows.clear()
     return response
 
 
 def sb_delete(table, field, value):
     sb_request("DELETE", "/rest/v1/" + table, params={field: "eq." + str(value)})
+    sb_rows.clear()
 
 
 def sb_upload(path, content):
@@ -89,9 +94,11 @@ def sb_upload(path, content):
     }, timeout=35)
     if not response.ok:
         raise RuntimeError(f"Supabase Storage {response.status_code}: {response.text[:350]}")
+    sb_download.clear()
     return path
 
 
+@st.cache_data(ttl=600, max_entries=180, show_spinner=False)
 def sb_download(path):
     if not path:
         return None
@@ -711,7 +718,7 @@ def fetch(url):
     response = requests.get(
         url,
         headers=HEADERS,
-        timeout=30
+        timeout=(5, 18)
     )
 
     response.raise_for_status()
@@ -1261,6 +1268,7 @@ BROADCAST_BOLD_FONT = Path(__file__).resolve().parent / "RobotoCondensed-Bold.tt
 BROADCAST_BODY_FONT = Path(__file__).resolve().parent / "ITC Franklin Gothic LT Medium.otf"
 
 
+@lru_cache(maxsize=128)
 def broadcast_font(size, bold=False):
     """Roboto Condensed for display text; Franklin Gothic for supporting text.
 
@@ -1737,6 +1745,12 @@ def fixture_library():
     return st.session_state.fixture_clubs
 
 
+@lru_cache(maxsize=128)
+def _local_logo_bytes(filename):
+    path = FIXTURE_LIBRARY_DIR / filename
+    return path.read_bytes() if filename and path.is_file() else None
+
+
 def fixture_logo_bytes(entry):
     if entry.get("logo_path") and sb_ready():
         cache = st.session_state.setdefault("sb_logo_cache", {})
@@ -1751,10 +1765,7 @@ def fixture_logo_bytes(entry):
     filename = Path(str(entry.get("file", ""))).name
     if filename in st.session_state.fixture_uploaded_logos:
         return st.session_state.fixture_uploaded_logos[filename]
-    file_path = FIXTURE_LIBRARY_DIR / filename
-    if filename and file_path.is_file():
-        return file_path.read_bytes()
-    return None
+    return _local_logo_bytes(filename)
 
 
 def fixture_team_identifiers(detail, team_name):
@@ -2579,7 +2590,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3347,14 +3358,14 @@ def results_scorecard_defaults(fixture):
                     pname=name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
                     try:runs=int(p.get('runsScored'))
                     except (TypeError,ValueError):continue
-                    if pname:bats.append((runs,pname,f"{runs} ({p.get('ballsFaced') if p.get('ballsFaced') is not None else '—'})", len(innings_records)-1))
+                    if pname and runs > 0:bats.append((runs,pname,f"{runs} ({p.get('ballsFaced') if p.get('ballsFaced') is not None else '—'})", len(innings_records)-1))
             elif batting_known:
                 for p in bowling:
                     if not isinstance(p,dict):continue
                     pname=name_of(p.get('playerShortName') or p.get('playerName') or p.get('player'))
                     try:wickets=int(p.get('wicketsTaken'))
                     except (TypeError,ValueError):continue
-                    if pname:
+                    if pname and (wickets > 0 or int(p.get('runsConceded') or 0) > 0):
                         conceded=p.get('runsConceded')
                         balls.append((wickets,-int(conceded or 0),pname,f"{wickets}/{conceded if conceded is not None else '—'}", len(innings_records)-1))
         # Multiple innings: show both team totals in batting order, not just
@@ -3414,27 +3425,12 @@ def draw_faded_navy_band(draw, x0, y0, x1, y1, base="#0c1b37", highlight="#243b6
         draw.line((int(x0+i), int(y0), int(x0+i), int(y1)), fill=color, width=1)
 
 
-def results_is_empty_innings(value):
-    """Treat a zero-run, zero-wicket innings as an unplayed placeholder."""
-    raw = str(value or "").strip()
-    return bool(re.fullmatch(r"0\s*/\s*0(?:\s*\([^)]*\))?", raw))
-
-
-def results_hide_performance(kind, figures):
-    """Suppress empty bowling (0/0) and zero-run batting highlights."""
-    raw = str(figures or "").strip()
-    if not raw:
-        return True
-    if kind == "ball":
-        return bool(re.match(r"^0\s*/\s*0(?:\D|$)", raw))
-    # Batting: the leading number is runs; e.g. 0 (4), 0*, 0.
-    return bool(re.match(r"^0(?:\s*\(|\s*\*|\s*$)", raw))
-
-
 def results_score_lines(value):
     """Return display-ready innings totals, keeping multiple innings separate."""
-    parts = [part.strip() for part in str(value or '').split('|') if part.strip() and not results_is_empty_innings(part)]
-    return [results_wickets_first(part) for part in parts]
+    parts = [part.strip() for part in str(value or '').split('|') if part.strip()]
+    # Scorecard stores runs/wickets; an unstarted 0/0 innings is not a result.
+    return [results_wickets_first(part) for part in parts
+            if not re.fullmatch(r"0\s*/\s*0(?:\s*\([^)]*\))?", part)]
 
 
 def results_wickets_first(value):
@@ -3577,7 +3573,11 @@ def results_render_pair(rows):
                 figures = str(row.get(f"{kind}{n}_figures") or "").strip()
                 if not pname and not figures:
                     continue
-                if results_hide_performance(kind, figures):
+                # Do not print placeholder/zero batting or bowling performances,
+                # including records manually entered in the match editor.
+                if kind == "bat" and re.match(r"^0(?:\s|\(|$)", figures):
+                    continue
+                if kind == "ball" and re.match(r"^0\s*/\s*0(?:\D|$)", figures):
                     continue
                 # Single-line stat row gives larger, more legible type on phones.
                 combined = f"{pname}  {figures}".strip()
@@ -3627,7 +3627,8 @@ def results_is_publishable(row, fixture=None):
         return False
     for key in ('home_score', 'away_score'):
         value = str(row.get(key) or '').strip()
-        if re.search(r"\d", value) and not re.fullmatch(r"[-–—]+", value):
+        if any(re.search(r"\d", part) and not re.fullmatch(r"0\s*/\s*0", part)
+               for part in value.split("|")):
             return True
     return False
 
@@ -3831,22 +3832,23 @@ def results_publisher(chosen):
         filename = f"HBCC_Match_Results_{graphic_num:02d}.png"
         images.append((filename, graphic))
 
-    gallery = st.columns(min(3, len(images)))
-    for i, (filename, graphic) in enumerate(images):
+    encoded_images = [(filename, graphic_png(graphic)) for filename, graphic in images]
+    gallery = st.columns(min(3, len(encoded_images)))
+    for i, (filename, png_bytes) in enumerate(encoded_images):
         match_count = min(2, len(publishable) - 2 * i)
         with gallery[i % len(gallery)]:
-            st.image(graphic_png(graphic),
+            st.image(png_bytes,
                      caption=f"Graphic {i+1} · {match_count} match{'es' if match_count > 1 else ''}",
                      use_container_width=True)
-            st.download_button(f"Download graphic {i+1}", graphic_png(graphic),
+            st.download_button(f"Download graphic {i+1}", png_bytes,
                                filename, "image/png", key=f"results_pair_{i+1}",
                                use_container_width=True)
     if images:
         import zipfile
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for filename, graphic in images:
-                zf.writestr(filename, graphic_png(graphic))
+            for filename, png_bytes in encoded_images:
+                zf.writestr(filename, png_bytes)
         st.download_button(f"Download all {len(images)} graphics (ZIP)", archive.getvalue(),
                            "HBCC_Match_Results.zip", "application/zip", type="primary",
                            use_container_width=True, key="results_download_all")
