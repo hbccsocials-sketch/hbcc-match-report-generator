@@ -3333,7 +3333,9 @@ def results_scorecard_defaults(fixture):
 
 
 def results_render_pair(rows):
-    """Render up to two complete match results on one Instagram portrait."""
+    """Two results per portrait. Logos occupy full-height outer sixths;
+    batting figures always sit beneath HBCC's score, bowling beneath the opponent.
+    """
     w, h = FIXTURE_SIZE
     cfg = {**RESULTS_DEFAULT_SETTINGS, **st.session_state.get("results_graphic_settings", {})}
     gold = cfg["gold"]
@@ -3352,47 +3354,79 @@ def results_render_pair(rows):
     d = ImageDraw.Draw(img)
     if not custom_bg:
         results_text(d, 540, 36, "MATCH RESULTS", 960, 79, gold)
+
     for idx, row in enumerate(rows[:2]):
         top = 155 + idx * 575
         bottom = top + 548
-        d.rounded_rectangle((35, top, 1045, bottom), radius=22,
+        left, right = 35, 1045
+        panel_width = right - left
+        side_width = round(panel_width / 6)  # one sixth for each logo
+        left_end, right_start = left + side_width, right - side_width
+        d.rounded_rectangle((left, top, right, bottom), radius=22,
                             fill="#0c1b37", outline=gold, width=4)
-        grade = str(row.get("grade") or "").upper()
-        results_text(d, 540, top + 14, grade, 900, 29, gold)
-        outcome = str(row.get("outcome") or "").strip()
-        if outcome:
-            results_text(d, 540, top + 57, outcome, 790, 24, "#ffffff")
         home_club, _ = fixture_resolve_club(row.get("home_name") or "")
         away_club, _ = fixture_resolve_club(row.get("away_name") or "")
-        # Full-height cover crop inside each side logo panel.
-        fixture_logo_paste(img, home_club, (141, top + 229),
-                           clip_box=(43, top + 124, 237, top + 333))
-        fixture_logo_paste(img, away_club, (939, top + 229),
-                           clip_box=(843, top + 124, 1037, top + 333))
+        # Fill each entire outer sixth vertically. Crop horizontal overflow,
+        # but never stretch the club artwork or cover the centre details.
+        fixture_logo_paste(img, home_club, ((left + left_end)//2, (top + bottom)//2),
+                           clip_box=(left+4, top+4, left_end, bottom-4))
+        fixture_logo_paste(img, away_club, ((right_start + right)//2, (top + bottom)//2),
+                           clip_box=(right_start, top+4, right-4, bottom-4))
         d = ImageDraw.Draw(img)
+        # Restore the frame on top of the images.
+        d.rounded_rectangle((left, top, right, bottom), radius=22,
+                            outline=gold, width=4)
+        centre_left, centre_right = left_end + 7, right_start - 7
+        centre = (centre_left + centre_right) / 2
+        col_left = centre_left + (centre_right-centre_left)*0.26
+        col_right = centre_left + (centre_right-centre_left)*0.74
+        col_width = (centre_right-centre_left)*0.44
+
+        results_text(d, centre, top + 12, str(row.get("grade") or "").upper(),
+                     centre_right-centre_left-20, 28, gold)
+        outcome = str(row.get("outcome") or "").strip()
+        if outcome:
+            results_text(d, centre, top + 53, outcome,
+                         centre_right-centre_left-25, 22, "#ffffff")
         hname = str((home_club or {}).get("name") or row.get("home_name") or "TEAM 1")
         aname = str((away_club or {}).get("name") or row.get("away_name") or "TEAM 2")
-        font, lines_by_team = fixture_equal_team_names(d, hname, aname, 245,
-                                                        max_size=28, min_size=14)
-        line_h = font.size + 6
-        for x, lines in zip((385, 695), lines_by_team):
-            start = top + 150 + (2-len(lines))*line_h/2
+        font, names = fixture_equal_team_names(d, hname, aname, col_width,
+                                                max_size=27, min_size=14)
+        line_h = font.size + 5
+        for x, lines in zip((col_left, col_right), names):
+            y0 = top + 110 + (2-len(lines))*line_h/2
             for j, line in enumerate(lines):
-                fixture_center(d, x, start+j*line_h, line, font, "#ffffff")
-        results_text(d, 540, top + 175, "VS", 44, 20, gold)
-        results_text(d, 385, top + 236, row.get("home_score") or "—", 235, 46, gold)
-        results_text(d, 695, top + 236, row.get("away_score") or "—", 235, 46, gold)
-        results_text(d, 540, top + 298, row.get("date_label") or "", 540, 23, gold)
-        results_text(d, 540, top + 329, row.get("venue") or "", 555, 21, "#ffffff", False)
-        d.line((95, top + 368, 985, top + 368), fill="#40516d", width=2)
-        # Two HBCC batters and two HBCC bowlers, one performer per row.
-        for kind, x in (("bat", 290), ("ball", 790)):
+                fixture_center(d, x, y0+j*line_h, line, font, "#ffffff")
+        results_text(d, centre, top + 137, "VS", 35, 19, gold)
+        results_text(d, col_left, top + 188, row.get("home_score") or "—", col_width, 44, gold)
+        results_text(d, col_right, top + 188, row.get("away_score") or "—", col_width, 44, gold)
+        results_text(d, centre, top + 243, row.get("date_label") or "",
+                     centre_right-centre_left-18, 22, gold)
+        results_text(d, centre, top + 275, row.get("venue") or "",
+                     centre_right-centre_left-18, 20, "#ffffff", False)
+        d.line((centre_left+12, top+314, centre_right-12, top+314), fill="#40516d", width=2)
+
+        # HBCC is not always home/team 1. Anchor batting to HBCC's column,
+        # bowling to the other side, independent of match order.
+        def hbcc_team(value):
+            key = re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+            return "hawthornboroondara" in key or key == "hbcc"
+        home_hbcc = hbcc_team(row.get("home_name")) or hbcc_team(hname)
+        away_hbcc = hbcc_team(row.get("away_name")) or hbcc_team(aname)
+        if home_hbcc and not away_hbcc:
+            bat_x, ball_x = col_left, col_right
+        elif away_hbcc and not home_hbcc:
+            bat_x, ball_x = col_right, col_left
+        else:
+            # No safe side identification: retain conventional ordering.
+            bat_x, ball_x = col_left, col_right
+        for kind, x in (("bat", bat_x), ("ball", ball_x)):
             for n in (1, 2):
-                y = top + 383 + (n-1)*75
+                y = top + 331 + (n-1)*92
                 pname = row.get(f"{kind}{n}_name") or "—"
                 figures = row.get(f"{kind}{n}_figures") or ""
-                results_text(d, x, y, pname, 420, 26, "#ffffff")
-                results_text(d, x, y + 31, figures, 420, 24, gold)
+                results_text(d, x, y, pname, col_width, 25, "#ffffff")
+                results_text(d, x, y + 33, figures, col_width, 24, gold)
     return img
 
 
