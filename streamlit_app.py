@@ -1,3 +1,4 @@
+import html
 
 import json
 import io
@@ -1802,7 +1803,7 @@ def fixture_resolve_club(name, identifiers=None, override_id=None):
     return club, "name/alias" if club else "unmatched"
 
 
-def fixture_save_mapping(identifiers, club):
+def fixture_save_mapping(identifiers, club, source_name=""):
     if not identifiers:
         raise ValueError("No team/club ID was available. Select the logo manually for this fixture, but it cannot be remembered by ID.")
     if not sb_ready():
@@ -1812,10 +1813,15 @@ def fixture_save_mapping(identifiers, club):
         club["id"] = "club_" + fixture_key(club.get("name"))
         sb_save_club(club)
     for identifier in identifiers:
-        sb_upsert("hbcc_club_mappings", {
+        record = {
             "source_id": identifier, "club_id": str(club["id"]),
             "source_type": identifier.split(":", 1)[0],
-        })
+        }
+        # A team name belongs to a team ID. Club IDs can span many grades,
+        # so never overwrite their shared record with an individual team name.
+        if identifier.startswith("team:") and str(source_name).strip():
+            record["source_name"] = str(source_name).strip()
+        sb_upsert("hbcc_club_mappings", record)
         fixture_id_mappings()[identifier] = str(club["id"])
 
 
@@ -2408,7 +2414,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2677,6 +2683,33 @@ def fixture_publisher(chosen):
                     ids = matches[0]
             row[side + "_ids"] = ids
 
+    # Fill in missing team names for IDs previously connected to Supabase.
+    # Only update a saved mapping when a real team ID is present and its
+    # current club link is already known. This never creates new mappings.
+    if sb_ready():
+        try:
+            existing_records = {str(r.get("source_id")): r for r in sb_rows("hbcc_club_mappings")}
+            name_updates = 0
+            for row in rows:
+                for side in ("home", "away"):
+                    team_name = str(row.get(side + "_name") or "").strip()
+                    if not team_name:
+                        continue
+                    for identifier in row.get(side + "_ids", []):
+                        if not str(identifier).startswith("team:"):
+                            continue
+                        record = existing_records.get(str(identifier))
+                        if record and not str(record.get("source_name") or "").strip():
+                            sb_request("PATCH", "/rest/v1/hbcc_club_mappings",
+                                params={"source_id": "eq." + str(identifier)},
+                                json_data={"source_name": team_name})
+                            record["source_name"] = team_name
+                            name_updates += 1
+            if name_updates:
+                st.caption(f"Updated {name_updates} existing PlayCricket team name(s) in Supabase from fixture details.")
+        except Exception as exc:
+            st.warning("Could not update saved team names: " + str(exc))
+
     clubs = fixture_library()
     # Existing GitHub club entries might lack IDs. Create deterministic local IDs
     # for the dropdown, and persist them only when the user saves a mapping.
@@ -2753,7 +2786,7 @@ def fixture_publisher(chosen):
                 if chosen_id and ids:
                     if st.button("Save ID mapping for " + team, key="save_map_" + str(row.get("id")) + side):
                         try:
-                            fixture_save_mapping(ids, fixture_club_by_id(chosen_id))
+                            fixture_save_mapping(ids, fixture_club_by_id(chosen_id), team)
                             st.success("Mapping saved to Supabase")
                         except Exception as exc:
                             st.error(str(exc))
@@ -2770,7 +2803,7 @@ def fixture_publisher(chosen):
                         if conflicts:
                             failures.append(team + ": conflicting saved ID " + ", ".join(conflicts))
                             continue
-                        fixture_save_mapping(ids, club)
+                        fixture_save_mapping(ids, club, team)
                         saved += 1
                     except Exception as exc:
                         failures.append(team + ": " + str(exc))
@@ -3039,8 +3072,17 @@ if stage == "setup":
                     f"**{option}**"
                 )
 
-                st.caption(
-                    mode_descriptions[option]
+                # Reserve identical description space in all four mode cards.
+                # Long descriptions wrap inside the reserved area without
+                # pushing the button or card border down.
+                st.markdown(
+                    '<div style="height:52px;min-height:52px;max-height:52px;'
+                    'overflow:hidden;display:flex;align-items:flex-start;'
+                    'padding-top:7px;color:#778294;font-size:0.875rem;'
+                    'line-height:1.45;">'
+                    + html.escape(mode_descriptions[option])
+                    + '</div>',
+                    unsafe_allow_html=True,
                 )
 
                 selected = (
