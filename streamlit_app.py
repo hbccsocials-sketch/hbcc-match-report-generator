@@ -2209,7 +2209,7 @@ def fixture_admin():
         replace = st.checkbox("Replace background image", key=prefix + "_replace")
         uploaded = st.file_uploader("New background (PNG or JPG, ideally 1080 × 1350)",
                                     type=["png", "jpg", "jpeg"],
-                                    disabled=not replace, key=prefix + "_upload")
+                                    key=prefix + "_upload")
         st.markdown("**Match card layout**")
         st.caption("Your background supplies the heading. These controls position the match cards and logos only.")
         with st.expander("Adjust match cards", expanded=False):
@@ -2653,7 +2653,7 @@ def team_template_admin():
         replace = st.checkbox("Upload or replace background image", key=prefix + "_replace",
                               value=selection == "__new__")
         uploaded = st.file_uploader("Background (PNG or JPG, ideally 1080 × 1350)",
-                                    type=["png", "jpg", "jpeg"], disabled=not replace,
+                                    type=["png", "jpg", "jpeg"],
                                     key=prefix + "_upload")
         with st.expander("Adjust player text layout", expanded=False):
             left = st.number_input("Left margin", 10, 250, int(initial_settings["left"]), key=prefix+"_left")
@@ -3085,7 +3085,7 @@ def results_template_admin():
         st.caption("Background can include your heading, branding and artwork. Match information is drawn over it.")
         replace = st.checkbox("Upload or replace background", value=False, key=prefix+"_replace")
         uploaded = st.file_uploader("Results background (1080 × 1350 PNG/JPG)", type=["png","jpg","jpeg"],
-                                    disabled=not replace, key=prefix+"_upload")
+                                    key=prefix+"_upload")
         with st.expander("Adjust results layout", expanded=False):
             outcome_top = st.slider("Outcome position", 260, 355, int(settings["outcome_top"]), key=prefix+"_outcome")
             score_top = st.slider("Score position", 450, 575, int(settings["score_top"]), key=prefix+"_score")
