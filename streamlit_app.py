@@ -2408,7 +2408,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2703,6 +2703,42 @@ def fixture_publisher(chosen):
                 )
                 row[side + "_club_override"] = chosen_id or None
                 chosen = fixture_club_by_id(chosen_id) if chosen_id else automatic
+                # The abbreviation belongs to the club, not to an individual
+                # fixture. Show the saved value and let editors update it here.
+                if chosen:
+                    abbr_key = "fixture_club_abbr_" + str(chosen.get("id"))
+                    if abbr_key not in st.session_state:
+                        st.session_state[abbr_key] = str(chosen.get("abbr") or "")
+                    abbr_col, save_col = st.columns([3, 1], vertical_alignment="bottom")
+                    with abbr_col:
+                        updated_abbr = st.text_input(
+                            "Club abbreviation · " + str(chosen.get("name", team)),
+                            max_chars=8, key=abbr_key,
+                            help="Used on every fixture graphic for this club. Saved to hbcc_clubs in Supabase.",
+                        )
+                    with save_col:
+                        save_abbr = st.button("Save abbreviation", key="fixture_save_abbr_" + str(row.get("id")) + "_" + side)
+                    if save_abbr:
+                        cleaned = updated_abbr.strip().upper()
+                        if not cleaned:
+                            st.error("Enter an abbreviation before saving.")
+                        elif not sb_ready():
+                            st.error("Supabase is not connected; abbreviation was not saved.")
+                        else:
+                            try:
+                                # Only update the abbreviation: don't overwrite
+                                # the club's logo, name, or aliases with stale data.
+                                club_id = str(chosen.get("id") or "")
+                                saved = sb_request("PATCH", "/rest/v1/hbcc_clubs",
+                                    params={"id": "eq." + club_id},
+                                    json_data={"abbreviation": cleaned})
+                                chosen["abbr"] = cleaned
+                                for library_club in fixture_library():
+                                    if str(library_club.get("id")) == club_id:
+                                        library_club["abbr"] = cleaned
+                                st.success("Saved " + cleaned + " to Supabase for " + str(chosen.get("name")))
+                            except Exception as exc:
+                                st.error("Could not save abbreviation: " + str(exc))
                 if ids:
                     st.caption("PlayCricket IDs: " + ", ".join(ids))
                     if chosen and method != "conflicting IDs":
