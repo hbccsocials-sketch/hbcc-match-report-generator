@@ -2408,7 +2408,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2690,7 +2690,7 @@ def fixture_publisher(chosen):
         if st.session_state.get("fixture_mapping_error"):
             st.warning("Mapping database unavailable: " + st.session_state.fixture_mapping_error)
         candidates = []
-        for row in rows:
+        for fixture_index, row in enumerate(rows):
             st.markdown(f"**{row.get('grade', 'Match')} — {row.get('home_name')} vs {row.get('away_name')}**")
             for side in ("home", "away"):
                 team = row.get(side + "_name", "")
@@ -2706,7 +2706,7 @@ def fixture_publisher(chosen):
                 # The abbreviation belongs to the club, not to an individual
                 # fixture. Show the saved value and let editors update it here.
                 if chosen:
-                    abbr_key = "fixture_club_abbr_" + str(chosen.get("id"))
+                    abbr_key = "fixture_club_abbr_" + str(chosen.get("id")) + "_" + str(fixture_index) + "_" + side
                     if abbr_key not in st.session_state:
                         st.session_state[abbr_key] = str(chosen.get("abbr") or "")
                     abbr_col, save_col = st.columns([3, 1], vertical_alignment="bottom")
