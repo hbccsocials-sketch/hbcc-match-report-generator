@@ -3126,7 +3126,7 @@ if stage == "setup":
 
         default_date = (
             "This Weekend"
-            if mode == "Team Selections"
+            if mode in ("Team Selections", "Upcoming Fixtures")
             else "Last Weekend"
         )
 
