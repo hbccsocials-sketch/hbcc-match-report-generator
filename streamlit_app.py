@@ -166,6 +166,13 @@ def sb_refresh_templates():
     st.session_state.sb_templates = sb_rows("hbcc_templates")
 
 
+# Match Results defaults must exist before Supabase restores saved templates.
+RESULTS_DEFAULT_SETTINGS = {
+    "outcome_top": 300, "score_top": 495, "performers_top": 755,
+    "logo_scale": 1.0, "gold": "#f5b82e",
+}
+
+
 def sb_load_once():
     if st.session_state.get("sb_loaded") or not sb_ready():
         return
@@ -2590,7 +2597,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -3059,11 +3066,6 @@ def results_text(draw, center_x, top, value, max_width, size, color="#ffffff", b
     font = fixture_text_fit(draw, value, max_width, size, 12, bold)
     fixture_center(draw, center_x, top, value, font, color)
 
-
-RESULTS_DEFAULT_SETTINGS = {
-    "outcome_top": 300, "score_top": 495, "performers_top": 755,
-    "logo_scale": 1.0, "gold": "#f5b82e",
-}
 
 
 def results_template_admin():
