@@ -201,6 +201,21 @@ def sb_load_once():
             st.session_state.graphic_settings_version = 3
             if active_team.get("background_path"):
                 st.session_state.graphic_template_bytes = sb_download(active_team["background_path"])
+        # Restore the independently selected results design.
+        result_rows = sb_request("GET", "/rest/v1/hbcc_settings", params={
+            "key":"eq.active_results_template", "select":"value"}).json()
+        result_id = ((result_rows[0].get("value") or {}).get("id") if result_rows else None)
+        result_templates = [t for t in st.session_state.sb_templates if t.get("template_type") == "match_results"]
+        result_record = next((t for t in result_templates if t.get("id") == result_id), None)
+        if not result_record and result_templates:
+            result_record = result_templates[0]
+        if result_record:
+            st.session_state.results_active_template_id = result_record["id"]
+            st.session_state.results_graphic_settings = {**RESULTS_DEFAULT_SETTINGS, **(result_record.get("settings") or {})}
+            if result_record.get("background_path"):
+                st.session_state.results_background_bytes = sb_download(result_record["background_path"])
+            else:
+                st.session_state.pop("results_background_bytes", None)
         # Restore the template selected by the admin on previous visits.
         active_settings = sb_request("GET", "/rest/v1/hbcc_settings", params={
             "key": "eq.active_fixture_template", "select": "value"}).json()
@@ -1954,6 +1969,22 @@ def fixture_wrapped_lines(draw, text, max_width, font, max_lines=2):
     return lines[:max_lines]
 
 
+def fixture_equal_team_names(draw, home_name, away_name, width, max_size=27, min_size=12):
+    """Fit two full club names to equal-sized, centred two-line text blocks."""
+    for font_size in range(max_size, min_size - 1, -1):
+        font = fixture_font(font_size, True)
+        lines = [fixture_wrapped_lines(draw, str(name), width, font, max_lines=99)
+                 for name in (home_name, away_name)]
+        if all(len(group) <= 2 and all(
+            draw.textbbox((0, 0), line, font=font)[2] <= width for line in group
+        ) for group in lines):
+            return font, lines
+    font = fixture_font(min_size, True)
+    lines = [fixture_wrapped_lines(draw, str(name), width, font, max_lines=2)
+             for name in (home_name, away_name)]
+    return font, lines
+
+
 def fixture_graphic(rows, settings):
     """NBA-inspired panels with bounded artwork and a dedicated text column."""
     w, h = FIXTURE_SIZE
@@ -2022,52 +2053,25 @@ def fixture_graphic(rows, settings):
         grade_y = strip_top + ((strip_bottom - strip_top) - grade_height) / 2 - grade_bbox[1]
         fixture_center(d, centre_x, grade_y, grade, grade_font, yellow)
 
-        hab = fixture_abbrev(home, hc)
-        aab = fixture_abbrev(away, ac)
-        # Independent bounded columns keep long abbreviations clear of VS and panel edges.
+        # Full club names replace abbreviations in both graphic modes.
+        # Fit both names using one shared font size, centred in equal-width
+        # columns, and allow up to two lines without overlapping VS.
         left_x, right_x = 421, 659
-        abbrev_max_width = 178
-        team_y = y + 62
-        home_font = fixture_text_fit(d, hab, abbrev_max_width, 48, 18, True)
-        away_font = fixture_text_fit(d, aab, abbrev_max_width, 48, 18, True)
-        # Use the same point size on both teams for visual balance.
-        shared_size = min(getattr(home_font, "size", 30), getattr(away_font, "size", 30))
-        team_font = fixture_font(shared_size, True)
-        fixture_center(d, left_x, team_y, hab, team_font, "#ffffff")
-        fixture_center(d, right_x, team_y, aab, team_font, "#ffffff")
-        fixture_center(d, centre_x, team_y + 12, "VS", fixture_font(21, True), yellow)
-
-        # Club names sit beneath their abbreviations, in separate bounded columns.
-        # Use the saved Supabase club name where available, otherwise the fixture name.
-        # Both labels use the same fitted font size and can wrap onto two lines.
         home_label = str((hc or {}).get("name") or home).strip()
         away_label = str((ac or {}).get("name") or away).strip()
-        label_width = 204
-        label_lines = None
-        label_font = None
-        for label_size in range(17, 10, -1):
-            trial_font = fixture_font(label_size, False)
-            hl = fixture_wrapped_lines(d, home_label, label_width, trial_font, max_lines=99)
-            al = fixture_wrapped_lines(d, away_label, label_width, trial_font, max_lines=99)
-            if max(len(hl), len(al)) <= 2 and all(
-                d.textbbox((0, 0), line, font=trial_font)[2] <= label_width
-                for line in hl + al
-            ):
-                label_font = trial_font
-                label_lines = (hl, al)
-                break
-        if label_font is None:
-            label_font = fixture_font(11, False)
-            label_lines = (
-                fixture_wrapped_lines(d, home_label, label_width, label_font, max_lines=2),
-                fixture_wrapped_lines(d, away_label, label_width, label_font, max_lines=2),
-            )
-        name_y = y + 117  # Extra breathing room below team abbreviations
-        name_line_height = getattr(label_font, "size", 11) + 3
+        name_width = 196
+        label_font, label_lines = fixture_equal_team_names(
+            d, home_label, away_label, name_width, max_size=27, min_size=12
+        )
+        name_line_height = label_font.size + 5
+        name_top = y + 75
         for name_x, lines in zip((left_x, right_x), label_lines):
+            block_height = len(lines) * name_line_height
+            first_y = name_top + (2 * name_line_height - block_height) / 2
             for line_no, line in enumerate(lines):
-                fixture_center(d, name_x, name_y + line_no * name_line_height,
-                               line, label_font, "#dce3ef")
+                fixture_center(d, name_x, first_y + line_no * name_line_height,
+                               line, label_font, "#ffffff")
+        fixture_center(d, centre_x, name_top + 13, "VS", fixture_font(20, True), yellow)
 
         dates = row.get("playing_dates") or [row.get("date", "")]
         date_str = fixture_pretty_dates(dates)
@@ -2543,7 +2547,7 @@ sb_load_once()
 
 def global_admin_panel():
     st.markdown("### Admin mode")
-    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", "HBCC1947"))
+    secret=str(st.secrets.get("TEMPLATE_ADMIN_PASSWORD", ""))
     if not secret:
         st.warning("Add TEMPLATE_ADMIN_PASSWORD to Streamlit Secrets to enable admin mode.")
         return
@@ -2569,10 +2573,11 @@ def global_admin_panel():
             st.rerun()
     elif sb_ready():
         st.caption("Supabase connected · saved assets persist across restarts")
-    tab_fixture,tab_team,tab_clubs=st.tabs(["Fixture templates","Team selection templates","Club visuals & aliases"])
+    tab_fixture,tab_team,tab_results,tab_clubs=st.tabs(["Fixture templates","Team selection templates","Match results templates","Club visuals & aliases"])
     with tab_fixture: fixture_admin()
     with tab_team:
         team_template_admin()
+    with tab_results: results_template_admin()
     with tab_clubs: fixture_club_admin()
 
 
@@ -3001,6 +3006,312 @@ def reset_results():
     st.session_state.article = ""
 
 
+
+
+# ============================================================
+# RESULTS GRAPHIC GENERATOR
+# ============================================================
+def results_text(draw, center_x, top, value, max_width, size, color="#ffffff", bold=True):
+    value = str(value or "").strip()
+    font = fixture_text_fit(draw, value, max_width, size, 12, bold)
+    fixture_center(draw, center_x, top, value, font, color)
+
+
+RESULTS_DEFAULT_SETTINGS = {
+    "outcome_top": 300, "score_top": 495, "performers_top": 755,
+    "logo_scale": 1.0, "gold": "#f5b82e",
+}
+
+
+def results_template_admin():
+    """Independent Supabase-backed template library for match results."""
+    st.markdown("#### Match results templates")
+    st.caption("Use a different background and layout for results. Your fixture and team selection templates are unaffected.")
+    if not sb_ready():
+        st.error("Connect Supabase before managing results templates.")
+        return
+    try:
+        templates = sorted([t for t in sb_rows("hbcc_templates") if t.get("template_type") == "match_results"],
+                           key=lambda t: str(t.get("name") or "").lower())
+    except Exception as exc:
+        st.error(f"Could not load result templates: {exc}")
+        return
+    by_id = {t["id"]: t for t in templates}
+    options = list(by_id) + ["__new__"]
+    pending = st.session_state.pop("results_editor_pending", None)
+    current = pending or st.session_state.get("results_editor_selection", "__new__")
+    if current not in options:
+        current = options[0] if templates else "__new__"
+    st.session_state["results_editor_selection"] = current
+    selection = st.selectbox("Choose results template", options, key="results_editor_selection",
+                             format_func=lambda x: "+ Create new template" if x == "__new__" else by_id[x].get("name", x))
+    record = by_id.get(selection, {})
+    prefix = "result_template_" + selection
+    settings = {**RESULTS_DEFAULT_SETTINGS, **(record.get("settings") or {})}
+    path = record.get("background_path")
+    with st.form("results_template_form_" + selection):
+        name = st.text_input("Template name", value=record.get("name", "Results template 1"), key=prefix+"_name")
+        if path:
+            try:
+                st.image(sb_download(path), width=190, caption="Current results background")
+            except Exception as exc:
+                st.warning("Background preview unavailable: " + str(exc))
+        st.caption("Background can include your heading, branding and artwork. Match information is drawn over it.")
+        replace = st.checkbox("Upload or replace background", value=False, key=prefix+"_replace")
+        uploaded = st.file_uploader("Results background (1080 × 1350 PNG/JPG)", type=["png","jpg","jpeg"],
+                                    disabled=not replace, key=prefix+"_upload")
+        with st.expander("Adjust results layout", expanded=False):
+            outcome_top = st.slider("Outcome position", 260, 355, int(settings["outcome_top"]), key=prefix+"_outcome")
+            score_top = st.slider("Score position", 450, 575, int(settings["score_top"]), key=prefix+"_score")
+            performers_top = st.slider("Player highlights position", 735, 825, int(settings["performers_top"]), key=prefix+"_players")
+            logo_scale = st.slider("Club logo scale", 0.7, 1.3, float(settings["logo_scale"]), 0.05, key=prefix+"_logos")
+        save = st.form_submit_button("Save changes", type="primary", use_container_width=True)
+    if save:
+        if not name.strip():
+            st.error("Enter a template name.")
+        elif replace and uploaded is None:
+            st.error("Select a background image or untick replacement.")
+        else:
+            template_id = "results_" + uuid.uuid4().hex[:16] if selection == "__new__" else selection
+            new_settings = {"outcome_top":outcome_top, "score_top":score_top,
+                            "performers_top":performers_top, "logo_scale":logo_scale, "gold":"#f5b82e"}
+            try:
+                if replace:
+                    path = "match-results-templates/" + template_id + ".png"
+                    sb_upload(path, sb_image(uploaded.getvalue()))
+                sb_upsert("hbcc_templates", {"id":template_id, "name":name.strip(),
+                          "template_type":"match_results", "background_path":path, "settings":new_settings})
+                sb_upsert("hbcc_settings", {"key":"active_results_template", "value":{"id":template_id}})
+                st.session_state.results_active_template_id = template_id
+                st.session_state.results_editor_pending = template_id
+                st.session_state.results_graphic_settings = new_settings
+                if path:
+                    st.session_state.results_background_bytes = sb_download(path)
+                else:
+                    st.session_state.pop("results_background_bytes", None)
+                sb_refresh_templates()
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not save results template: {exc}")
+    if selection != "__new__":
+        with st.expander("Delete this template"):
+            if len(templates) < 2:
+                st.info("Create another results template before deleting this one.")
+            else:
+                confirm = st.checkbox("I understand this template will be deleted", key=prefix+"_confirm")
+                if st.button("Delete results template", disabled=not confirm, key=prefix+"_delete"):
+                    try:
+                        survivors = [t for t in sb_rows("hbcc_templates") if t.get("template_type") == "match_results" and t.get("id") != selection]
+                        if not survivors:
+                            st.error("Cannot delete the final results template.")
+                        else:
+                            fallback = survivors[0]
+                            sb_upsert("hbcc_settings", {"key":"active_results_template", "value":{"id":fallback["id"]}})
+                            sb_delete("hbcc_templates", "id", selection)
+                            old_path = record.get("background_path") or ""
+                            if old_path == "match-results-templates/" + selection + ".png" and not any(t.get("background_path") == old_path for t in survivors):
+                                try:
+                                    sb_request("DELETE", "/storage/v1/object/hbcc-assets/" + quote(old_path, safe="/"))
+                                except Exception:
+                                    pass
+                            st.session_state.results_active_template_id = fallback["id"]
+                            st.session_state.results_editor_pending = fallback["id"]
+                            st.session_state.results_graphic_settings = {**RESULTS_DEFAULT_SETTINGS, **(fallback.get("settings") or {})}
+                            if fallback.get("background_path"):
+                                st.session_state.results_background_bytes = sb_download(fallback["background_path"])
+                            else:
+                                st.session_state.pop("results_background_bytes", None)
+                            sb_refresh_templates()
+                            st.rerun()
+                    except Exception as exc:
+                        st.error(f"Could not delete results template: {exc}")
+
+
+def results_render(row):
+    """One Instagram portrait per result; existing fixture artwork and club visuals."""
+    w, h = FIXTURE_SIZE
+    img = Image.new("RGB", (w, h), "#101b33")
+    d = ImageDraw.Draw(img)
+    for yy in range(h):
+        t = yy / h
+        a, b = (165, 12, 35), (14, 25, 47)
+        d.line((0, yy, w, yy), fill=tuple(int(a[k]*(1-t)+b[k]*t) for k in range(3)))
+    # The fixture background may contain 'UPCOMING MATCHES', so only reuse
+    # its texture when no baked-in fixture heading is present.
+    cfg = {**RESULTS_DEFAULT_SETTINGS, **st.session_state.get("results_graphic_settings", {})}
+    gold = cfg["gold"]
+    custom_bg = st.session_state.get("results_background_bytes")
+    if custom_bg:
+        try:
+            img = Image.open(io.BytesIO(custom_bg)).convert("RGB").resize((w,h), Image.Resampling.LANCZOS)
+        except Exception:
+            pass
+    d = ImageDraw.Draw(img)
+    if not custom_bg:
+        results_text(d, w//2, 65, "MATCH RESULTS", 940, 95, gold)
+    results_text(d, w//2, 180, str(row.get("grade", "")).upper(), 850, 32, "#ffffff")
+    d.rounded_rectangle((45, 255, 1035, 720), radius=26, fill="#0c1b37", outline=gold, width=5)
+    left, right = 185, 895
+    for name, x, zone in ((row['home_name'], left, (52, 295, 305, 540)),
+                          (row['away_name'], right, (775, 295, 1028, 540))):
+        club, _ = fixture_resolve_club(name)
+        fixture_logo_paste(img, club, (x, 417), size=int(140 * float(cfg["logo_scale"])), clip_box=zone)
+    d = ImageDraw.Draw(img)
+    home_club, _ = fixture_resolve_club(row['home_name'])
+    away_club, _ = fixture_resolve_club(row['away_name'])
+    outcome_y = int(cfg["outcome_top"])
+    score_y = int(cfg["score_top"])
+    performers_y = int(cfg["performers_top"])
+    # Outcome banner makes results visually distinct from upcoming fixture cards.
+    d.rounded_rectangle((330, outcome_y-9, 750, outcome_y+53), radius=13, fill="#263956")
+    results_text(d, 540, outcome_y, row.get('outcome') or 'RESULT', 402, 32, gold)
+    home_label = str((home_club or {}).get('name') or row['home_name']).strip()
+    away_label = str((away_club or {}).get('name') or row['away_name']).strip()
+    name_font, name_lines = fixture_equal_team_names(
+        d, home_label, away_label, 196, max_size=27, min_size=12
+    )
+    name_line_height = name_font.size + 6
+    for x, lines in zip((420, 660), name_lines):
+        first_y = 390 + (2 * name_line_height - len(lines) * name_line_height) / 2
+        for line_no, line in enumerate(lines):
+            fixture_center(d, x, first_y + line_no * name_line_height,
+                           line, name_font, '#ffffff')
+    results_text(d, 540, 404, 'VS', 52, 20, gold)
+    results_text(d, 420, score_y, row.get('home_score') or '—', 190, 44, gold)
+    results_text(d, 660, score_y, row.get('away_score') or '—', 190, 44, gold)
+    results_text(d, 540, 633, row.get('date_label', ''), 780, 29, gold)
+    results_text(d, 540, 675, row.get('venue', ''), 820, 24, '#ffffff', False)
+    # Equal-sized batting/bowling highlight sections.
+    d.rounded_rectangle((45, performers_y, 1035, performers_y+455), radius=22, fill="#142744", outline=gold, width=4)
+    d.line((540, performers_y+25, 540, performers_y+429), fill="#334562", width=3)
+    for kind, x in (("bat", 292), ("ball", 788)):
+        for i in range(2):
+            name = row.get(f'{kind}{i+1}_name') or '—'
+            figures = row.get(f'{kind}{i+1}_figures') or ''
+            results_text(d, x, performers_y+70 + i*150, name, 420, 32)
+            results_text(d, x, performers_y+119 + i*150, figures, 420, 30, gold)
+    results_text(d, 540, 1265, "HAWTHORN BOROONDARA CRICKET CLUB", 960, 28, gold)
+    return img
+
+
+def results_score(innings):
+    if not isinstance(innings, dict):
+        return ''
+    runs = innings.get('runsScored')
+    wickets = innings.get('numberOfWicketsFallen')
+    if runs is None:
+        return ''
+    return str(runs) + ('/' + str(wickets) if wickets is not None else '')
+
+
+def results_scorecard_defaults(fixture):
+    data = {'home_name': fixture.get('home_name', ''),
+            'away_name': fixture.get('away_name', ''),
+            'grade': fixture.get('grade', ''),
+            'venue': fixture.get('venue', ''),
+            'date_label': fixture_pretty_dates(fixture.get('playing_dates') or [fixture.get('date', '')]),
+            'home_score': '', 'away_score': '', 'outcome': '',
+            **{f'{kind}{i}_{field}': '' for kind in ('bat','ball') for i in (1,2) for field in ('name','figures')}}
+    try:
+        detail = match_detail(fixture['id'])
+        summary = detail.get('matchSummary') or {}
+        if isinstance(summary, dict):
+            data['outcome'] = str(summary.get('resultText') or '')
+        teams = teams_of(summary) or teams_of(detail)
+        # Only assign scores when the team objects expose identifiable names.
+        for team in teams:
+            name = name_of(team.get('name') or team.get('teamName') or team.get('displayName'))
+            if not name:
+                continue
+            for side in ('home','away'):
+                if fixture_key(name) == fixture_key(data[side+'_name']):
+                    score = results_score(team)
+                    if score:
+                        data[side+'_score'] = score
+        innings = innings_summary(detail)
+        # Innings summaries can lack team identity; never guess which score
+        # belongs to which side. Batting/bowling performers are left editable
+        # unless they can be linked to HBCC via a named team object.
+        for team in teams:
+            name = name_of(team.get('name') or team.get('teamName') or team.get('displayName'))
+            if 'hawthorn boroondara' not in fixture_key(name) and 'hbcc' not in fixture_key(name):
+                continue
+            candidates = [team]
+            if isinstance(team.get('innings'), list):
+                candidates.extend(x for x in team['innings'] if isinstance(x, dict))
+            bats, balls = [], []
+            for candidate in candidates:
+                for player in candidate.get('batting', []) if isinstance(candidate.get('batting'), list) else []:
+                    if isinstance(player, dict):
+                        pname = name_of(player.get('playerShortName') or player.get('playerName') or player.get('player'))
+                        try: runs = int(player.get('runsScored'))
+                        except (ValueError, TypeError): continue
+                        if pname: bats.append((runs, pname, str(runs) + ' (' + str(player.get('ballsFaced') or '—') + ')'))
+                for player in candidate.get('bowling', []) if isinstance(candidate.get('bowling'), list) else []:
+                    if isinstance(player, dict):
+                        pname = name_of(player.get('playerShortName') or player.get('playerName') or player.get('player'))
+                        try: wkts = int(player.get('wicketsTaken'))
+                        except (ValueError, TypeError): continue
+                        if pname: balls.append((wkts, pname, str(wkts) + '/' + str(player.get('runsConceded') or '0')))
+            for kind, values in (('bat', sorted(bats, reverse=True)), ('ball', sorted(balls, reverse=True))):
+                for i, (_, name, figures) in enumerate(values[:2], 1):
+                    data[f'{kind}{i}_name'] = name
+                    data[f'{kind}{i}_figures'] = figures
+        data['_scorecard_loaded'] = True
+    except Exception as error:
+        data['_load_error'] = str(error)
+    return data
+
+
+def results_publisher(chosen):
+    st.caption('One 1080 × 1350 Instagram graphic per match · Supabase club logos · independent results templates')
+    if not chosen:
+        st.info('Select at least one match in Review Fixtures.')
+        return
+    selected = st.selectbox('Match to create a result for', chosen,
+                            format_func=lambda f: f.get('grade','') + ' · ' + f.get('name',''),
+                            key='results_match_choice')
+    mid = selected['id']
+    store = st.session_state.setdefault('results_editors', {})
+    if mid not in store:
+        with st.spinner('Reading PlayCricket scorecard...'):
+            store[mid] = results_scorecard_defaults(selected)
+    if st.button('Refresh from PlayCricket scorecard', key='results_refresh'):
+        store[mid] = results_scorecard_defaults(selected)
+        st.rerun()
+    row = store[mid]
+    if row.get('_load_error'):
+        st.warning('Scorecard could not be fully loaded. You can still enter results manually.')
+    st.info('Review all scores, match outcome and player figures before publishing. Unavailable details are left blank.')
+    with st.container(border=True):
+        st.markdown('#### Match details')
+        a, b = st.columns(2)
+        with a:
+            row['home_name'] = st.text_input('Team 1', value=row['home_name'], key='res_home_'+mid)
+            row['home_score'] = st.text_input('Team 1 total score', value=row['home_score'], placeholder='e.g. 8/214', key='res_hscore_'+mid)
+        with b:
+            row['away_name'] = st.text_input('Team 2', value=row['away_name'], key='res_away_'+mid)
+            row['away_score'] = st.text_input('Team 2 total score', value=row['away_score'], placeholder='e.g. 189', key='res_ascore_'+mid)
+        row['outcome'] = st.text_input('Match outcome', value=row['outcome'], placeholder='e.g. HBCC WON BY 25 RUNS', key='res_outcome_'+mid)
+        row['grade'] = st.text_input('Grade', value=row['grade'], key='res_grade_'+mid)
+        row['date_label'] = st.text_input('Match date', value=row['date_label'], key='res_date_'+mid)
+        row['venue'] = st.text_input('Venue', value=row['venue'], key='res_venue_'+mid)
+    with st.container(border=True):
+        st.markdown('#### HBCC best performers')
+        left, right = st.columns(2)
+        for kind, col, title, example in (('bat', left, 'With the bat', 'e.g. 74 (62)'), ('ball', right, 'With the ball', 'e.g. 3/24')):
+            with col:
+                st.markdown('**'+title+'**')
+                for i in (1, 2):
+                    row[f'{kind}{i}_name'] = st.text_input(f'Player {i} — {title.lower()}', value=row[f'{kind}{i}_name'], key=f'res_{kind}{i}n_'+mid)
+                    row[f'{kind}{i}_figures'] = st.text_input(f'Figures {i}', value=row[f'{kind}{i}_figures'], placeholder=example, key=f'res_{kind}{i}f_'+mid)
+    img = results_render(row)
+    st.markdown('#### Preview & download')
+    st.image(img, use_container_width=True)
+    st.download_button('Download result graphic (PNG)', graphic_png(img),
+                       'HBCC_Result_'+str(mid)[:8]+'.png', 'image/png',
+                       type='primary', use_container_width=True, key='result_download_'+mid)
+
 # ============================================================
 # ADVANCED SETTINGS
 # ============================================================
@@ -3179,7 +3490,8 @@ if stage == "setup":
         "Match Report",
         "Weekend Wrap",
         "Team Selections",
-        "Upcoming Fixtures"
+        "Upcoming Fixtures",
+        "Match Results"
     ]
 
     mode_descriptions = {
@@ -3194,10 +3506,13 @@ if stage == "setup":
         ),
         "Upcoming Fixtures": (
             "Create upcoming match graphics with club logos"
+        ),
+        "Match Results": (
+            "Scores, outcome and HBCC best performers"
         )
     }
 
-    mode_columns = st.columns(4)
+    mode_columns = st.columns(5)
 
     for column, option in zip(
         mode_columns,
@@ -4057,6 +4372,9 @@ else:
 
     elif mode == "Upcoming Fixtures":
         fixture_publisher(chosen)
+
+    elif mode == "Match Results":
+        results_publisher(chosen)
 
     else:
         if st.button(
