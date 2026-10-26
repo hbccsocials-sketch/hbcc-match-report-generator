@@ -1875,7 +1875,7 @@ def fixture_center(draw, x, y, text, font, fill):
 
 
 def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
-    """Contain the complete original club artwork inside its designated panel."""
+    """Fill the logo panel vertically, preserving aspect ratio; crop horizontal overflow."""
     if not entry:
         return
     raw = fixture_logo_bytes(entry)
@@ -1883,20 +1883,25 @@ def fixture_logo_paste(image, entry, center, size=140, clip_box=None):
         return
     try:
         logo = Image.open(io.BytesIO(raw)).convert("RGBA")
-        if clip_box is not None:
-            x0, y0, x1, y1 = map(int, clip_box)
-            # Keep the full image, including its corners, inside the gold frame.
-            available_w = max(1, x1 - x0 - 8)
-            available_h = max(1, y1 - y0 - 8)
-            factor = min(float(size) / logo.width, float(size) / logo.height,
-                         available_w / logo.width, available_h / logo.height)
-        else:
+        if clip_box is None:
             factor = min(float(size) / logo.width, float(size) / logo.height)
-        dimensions = (max(1, round(logo.width * factor)), max(1, round(logo.height * factor)))
-        logo = logo.resize(dimensions, Image.Resampling.LANCZOS)
-        left = round(center[0] - logo.width / 2)
-        upper = round(center[1] - logo.height / 2)
-        image.paste(logo, (left, upper), logo)
+            dimensions = (max(1, round(logo.width * factor)), max(1, round(logo.height * factor)))
+            logo = logo.resize(dimensions, Image.Resampling.LANCZOS)
+            left = round(center[0] - logo.width / 2)
+            upper = round(center[1] - logo.height / 2)
+            image.paste(logo, (left, upper), logo)
+            return
+
+        x0, y0, x1, y1 = map(int, clip_box)
+        panel_w, panel_h = max(1, x1 - x0), max(1, y1 - y0)
+        # Fill the entire panel height, even when this makes the artwork wider
+        # than the side panel. Horizontal excess is clipped, never squeezed.
+        factor = panel_h / logo.height
+        scaled_w = max(1, round(logo.width * factor))
+        logo = logo.resize((scaled_w, panel_h), Image.Resampling.LANCZOS)
+        panel = Image.new("RGBA", (panel_w, panel_h), (0, 0, 0, 0))
+        panel.alpha_composite(logo, (round((panel_w - scaled_w) / 2), 0))
+        image.paste(panel, (x0, y0), panel)
     except (OSError, ValueError, ZeroDivisionError):
         return
 
@@ -2021,7 +2026,7 @@ def fixture_graphic(rows, settings):
         # Independent bounded columns keep long abbreviations clear of VS and panel edges.
         left_x, right_x = 421, 659
         abbrev_max_width = 178
-        team_y = y + 64
+        team_y = y + 62
         home_font = fixture_text_fit(d, hab, abbrev_max_width, 48, 18, True)
         away_font = fixture_text_fit(d, aab, abbrev_max_width, 48, 18, True)
         # Use the same point size on both teams for visual balance.
@@ -2031,9 +2036,41 @@ def fixture_graphic(rows, settings):
         fixture_center(d, right_x, team_y, aab, team_font, "#ffffff")
         fixture_center(d, centre_x, team_y + 12, "VS", fixture_font(21, True), yellow)
 
+        # Club names sit beneath their abbreviations, in separate bounded columns.
+        # Use the saved Supabase club name where available, otherwise the fixture name.
+        # Both labels use the same fitted font size and can wrap onto two lines.
+        home_label = str((hc or {}).get("name") or home).strip()
+        away_label = str((ac or {}).get("name") or away).strip()
+        label_width = 204
+        label_lines = None
+        label_font = None
+        for label_size in range(17, 10, -1):
+            trial_font = fixture_font(label_size, False)
+            hl = fixture_wrapped_lines(d, home_label, label_width, trial_font, max_lines=99)
+            al = fixture_wrapped_lines(d, away_label, label_width, trial_font, max_lines=99)
+            if max(len(hl), len(al)) <= 2 and all(
+                d.textbbox((0, 0), line, font=trial_font)[2] <= label_width
+                for line in hl + al
+            ):
+                label_font = trial_font
+                label_lines = (hl, al)
+                break
+        if label_font is None:
+            label_font = fixture_font(11, False)
+            label_lines = (
+                fixture_wrapped_lines(d, home_label, label_width, label_font, max_lines=2),
+                fixture_wrapped_lines(d, away_label, label_width, label_font, max_lines=2),
+            )
+        name_y = y + 108
+        name_line_height = getattr(label_font, "size", 11) + 3
+        for name_x, lines in zip((left_x, right_x), label_lines):
+            for line_no, line in enumerate(lines):
+                fixture_center(d, name_x, name_y + line_no * name_line_height,
+                               line, label_font, "#dce3ef")
+
         dates = row.get("playing_dates") or [row.get("date", "")]
         date_str = fixture_pretty_dates(dates)
-        date_y = y + 122
+        date_y = y + 151
         date_font = fixture_text_fit(d, date_str, usable, 26, 15, True)
         fixture_center(d, centre_x, date_y, date_str, date_font, yellow)
 
@@ -2042,7 +2079,7 @@ def fixture_graphic(rows, settings):
         # Fit dynamically inside the remaining card space, preserving all words.
         date_bbox = d.textbbox((0, 0), date_str, font=date_font)
         date_bottom = date_y + date_bbox[3]
-        venue_area_top = max(y + 163, date_bottom + 18)
+        venue_area_top = max(y + 192, date_bottom + 13)
         venue_area_bottom = y + card_h - 12
         available_h = max(16, venue_area_bottom - venue_area_top)
         venue_font = fixture_font(25, False)
